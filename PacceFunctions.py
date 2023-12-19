@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import matplotlib.mlab as mlab
 from scipy import interpolate
 from scipy import integrate
-from  scipy import ndimage
+from scipy import ndimage
 import re
 import time
 
