@@ -85,11 +85,16 @@ def computeEW(cont_l,cont_f,line_l,line_f, error=None):
         SN=np.mean(np.divide(S,N))
         print(SN)
     except:
-        SN=np.mean(cont_f)/np.std(cont_f)
-        print('not using error')
+        chop = np.diff(cont_l) # get the difference between lambdas
+        idx = np.where((chop > 2*(cont_l[3] - cont_l[2])))[0][0]+1 # find where the first continuum finishes 
+        #(i found this method to be optimal because taking into considertation all the continuum the spectra 
+        #can have variations that are not due to noise and we end up over estimating the errors)
+        
+        SN=np.mean(cont_f[:idx])/np.std(cont_f[:idx]-cont(cont_l[:idx])) # here i am
+        #calculating the signal to noise ratio only in the first defined band 
     
     # error bar estimation based on https://arxiv.org/pdf/astro-ph/0606341.pdf
-    #changed their equation (7) to depend only on EQW, d_LAMBDA nad the S/N
+    #changed their equation (7) to depend only on EQW, d_LAMBDA and the S/N
     
     dl = line_l[-1]-line_l[0]
     eEW = np.sqrt((2*dl-EW)*(dl-EW))/SN
@@ -138,6 +143,7 @@ def eqw(wave, flux, idx_definitions, error=None):#, name, do_figs=False):
     else:
         for line in idx_definitions:
             try:
+                print(line['name'])
                 (cont_l,cont_f,line_l,line_f)=GetConts(wave,flux,line['defs'],line['conts'])
                 EW, eEW = computeEW(cont_l,cont_f,line_l,line_f)
                 eqw_measurements.append(EW)
@@ -154,7 +160,7 @@ def eqw(wave, flux, idx_definitions, error=None):#, name, do_figs=False):
 
 
 
-def pacce(filename,IndexDefs,Doplots=False):
+def pacce(filename,IndexDefs,Doplots=False, output_file='demo.txt'):
     
     '''
      This function computs EW of emission/absorption lines from an input file and an input spectrum. 
@@ -222,7 +228,7 @@ def pacce(filename,IndexDefs,Doplots=False):
         
         data_table.loc[file] = eqw(wave, flux, idx_definitions, error)
     
-    sourceFile = open('demo.txt', 'w')
+    sourceFile = open(output_file, 'w')
     print(data_table.to_string(), file = sourceFile)
     sourceFile.close()
 
