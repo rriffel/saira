@@ -83,7 +83,6 @@ def computeEW(cont_l,cont_f,line_l,line_f, error=None):
         S=line_f
         N=error
         SN=np.mean(np.divide(S,N))
-        print(SN)
     except:
         chop = np.diff(cont_l) # get the difference between lambdas
         idx = np.where((chop > 2*(cont_l[3] - cont_l[2])))[0][0]+1 # find where the first continuum finishes 
@@ -143,7 +142,6 @@ def eqw(wave, flux, idx_definitions, error=None):#, name, do_figs=False):
     else:
         for line in idx_definitions:
             try:
-                print(line['name'])
                 (cont_l,cont_f,line_l,line_f)=GetConts(wave,flux,line['defs'],line['conts'])
                 EW, eEW = computeEW(cont_l,cont_f,line_l,line_f)
                 eqw_measurements.append(EW)
