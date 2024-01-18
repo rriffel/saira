@@ -10,6 +10,9 @@ from scipy import ndimage
 import re
 import time
 import pandas as pd
+from astropy import constants
+
+c = constants.c.to('km/s').value
 
 def defs(l):
     '''
@@ -103,8 +106,48 @@ def computeEW(cont_l,cont_f,line_l,line_f, error=None):
 
 
 
+################################################################################
 
-def eqw(wave, flux, idx_definitions, error=None):#, name, do_figs=False):
+def varsmooth(x, y, sig_x, xout=None, oversample=1):
+    """    
+    Fourier convolution with a Gaussian with variable sigma per pixel
+    using FFT and analytic Fourier Transform of the Gaussian (like ppxf).
+    Convolve a vector or the first dimension (all columns) of an array.
+    
+    Implements Algorithm 1 in Cappellari+22 (MNRAS submitted)
+    https://ui.adsabs.harvard.edu/abs/2022arXiv220814974C
+
+    :param x: coordinate of every pixel in y.
+    :param y: input vector or array of colum-spectra.
+    :param sig_x: vector with Gaussian sigma of every pixel in units of x.
+    :param oversample: oversampling before convolution.
+    :param xout: optional output x coordinate used to compute the convolved y.
+    :return: convolved vector or columns of the array y.
+
+    """
+    # Stretches spectrum to have equal sigma in the new coordinate
+    sig = sig_x/np.gradient(x)
+    sig_max = np.max(sig)*oversample
+    xs = np.cumsum(sig_max/sig)
+    n = int(np.ceil(xs[-1] - xs[0]))
+    x_new = np.linspace(xs[0], xs[-1], n)
+    y_new = interpolate.interp1d(xs, y.T)(x_new)
+
+    # Convolve spectrum with a Gaussian using analytic FT like pPXF
+    npad = 2**int(np.ceil(np.log2(n)))
+    ft = np.fft.rfft(y_new, npad)
+    w = np.linspace(0, np.pi*sig_max, ft.shape[-1])
+    ft_gau = np.exp(-0.5*w**2)
+    y_conv = np.fft.irfft(ft*ft_gau, npad).T[:n]
+
+    if xout is not None:
+        xs = interpolate.interp1d(x, xs)(xout)
+
+    return interpolate.interp1d(x_new, y_conv.T)(xs).T
+
+# Credit: PPXF, Cappellari
+
+def eqw(wave, flux, idx_definitions, error=None, sigma_fin=None, sigma_ini=None, FWHM_fin=None, FWHM_ini=None, z=None):#, name, do_figs=False):
     
     # Function that gets the spectra, tweeks it in a way given by the user and calls the functions to make the calculation of the EW
     #
@@ -114,13 +157,37 @@ def eqw(wave, flux, idx_definitions, error=None):#, name, do_figs=False):
     # flux: flux of the spectra you want to calculate the EW
     # idx_definitions: output table from the defs function i.e. fist row: names, second row: wavelength limits for the feature,
     #   third row: wavlength limits for the continuum bands 
-    # name: name of the spectra
+    # sigma_fin: velocity dispersion to be used in the convulution with a gaussina kernel
+    # FWHM_model: initial velocity dispersion. can be both a number or an array.
     # do_figs: if you want the code to show you the calculations for each line.
     #
+    # improvement: the broadening still does not take into account errors. Should it?
     #
-    #
-    #To be done: possibility of degrading the spectrum, radial velocity correction
 
+    if z is not None:
+        wave = wave/(1+z)
+
+    #dwave = np.diff(wave)
+    #dwave = np.append(dwave, dwave[-1])
+    
+    
+    try:
+        FWHM_ini = (sigma_ini*2.355/c)*wave
+    except:
+        print('Using FWHM_ini provided', end='\r')
+    try:
+        FWHM_fin = (sigma_fin*2.355/c)*wave
+    except:
+        print('Using FWHM_fin provided', end='\r')
+
+    try:
+        sigma = np.sqrt(np.power(FWHM_fin,2)-np.power(FWHM_ini,2))/2.355
+        sigma = np.nan_to_num(sigma) #turn negative values to zero
+        sigma = sigma.clip(0.001) # add a really small number instead os zero (code crashed otherwise)
+        flux = varsmooth(x = wave, y = flux, sig_x = sigma)
+    except:
+        print('Convolution not performed. Check the input parameters you gave for the convolution. \n',
+                  sigma_ini, sigma_fin, FWHM_ini, FWHM_fin)
     
 
     eqw_measurements = []
@@ -158,7 +225,8 @@ def eqw(wave, flux, idx_definitions, error=None):#, name, do_figs=False):
 
 
 
-def pacce(filename,IndexDefs,Doplots=False, output_file='demo.txt'):
+def pacce(filename, IndexDefs, Doplots = False, output_file = 'demo.txt', sigma_ini = None,
+          sigma_fin = None, FWHM_fin = None, FWHM_ini = None, z=None):
     
     '''
      This function computs EW of emission/absorption lines from an input file and an input spectrum. 
@@ -173,21 +241,6 @@ def pacce(filename,IndexDefs,Doplots=False, output_file='demo.txt'):
      SimTimes: integer with the number of simulations
      treshold: fraction of the line continuum compared with the bandpass.
     
-    '''
-
-    '''
-    c=open(IndexDefs)
-    defsfile=c.readlines()
-    try:
-        test=np.loadtxt(galname,usecols=(2,))
-        error=True
-    except:
-        error=False
-
-    if error:
-        (l_obs,f_obs,ef_obs)=np.loadtxt(galname,usecols=(0,1,2),unpack=True)
-    if not error:
-        (l_obs,f_obs)=np.loadtxt(galname,usecols=(0,1),unpack=True)
     '''
 
     # loading idx definitions
@@ -224,7 +277,8 @@ def pacce(filename,IndexDefs,Doplots=False, output_file='demo.txt'):
             wave, flux = np.genfromtxt(file, usecols=(0,1), unpack=True)
             error = None
         
-        data_table.loc[file] = eqw(wave, flux, idx_definitions, error)
+        data_table.loc[file] = eqw(wave, flux, idx_definitions, error, sigma_fin,
+                                   sigma_ini, FWHM_fin, FWHM_ini, z)
     
     sourceFile = open(output_file, 'w')
     print(data_table.to_string(), file = sourceFile)
