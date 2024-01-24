@@ -1,14 +1,11 @@
 #!/usr/bin/python
-import os, glob
-from pylab import *
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.mlab as mlab
 from scipy import interpolate
 from scipy import integrate
-from scipy import ndimage
 import re
-import time
 import pandas as pd
 from astropy import constants
 
@@ -41,7 +38,7 @@ def defs(l):
 def GetConts(l_obs,f_obs,linelims,contBandPass):
         # Cutting the parts of the spectrum with the lines and adding the limits.
         line_l=l_obs[(l_obs >= linelims[0]) & (l_obs <=linelims[1])]
-        line_f=f_obs[(l_obs >= linelims[0]) & (l_obs <=linelims[1])]
+        line_f=f_obs[(l_obs >= linelims[0]) & (l_obs <=linelims[1])] 
         FindPointsLine=interpolate.interp1d(l_obs,f_obs)
         first=FindPointsLine(linelims[0])
         last=FindPointsLine(linelims[1])
@@ -55,24 +52,33 @@ def GetConts(l_obs,f_obs,linelims,contBandPass):
         ini=0
         fin=1
 #       Appending first continuum points (calculating)
-        firstCont=FindPointsLine(contBandPass[0])
-        cont_f=np.append(firstCont,cont_f)
-        cont_l=np.append(contBandPass[0],cont_l)
+        try:
+            firstCont=FindPointsLine(contBandPass[ini])
+            cont_f=np.append(cont_f, firstCont)
+            cont_l=np.append(cont_l, contBandPass[ini])
+        except:
+            print('1st cointinuum of the line outside the spectrum')
+        
         for i in range(0,(int(len(contBandPass)/2))):
-             cont_l_tmp=l_obs[(l_obs > contBandPass[ini]) & (l_obs < contBandPass[fin])]
-             cont_f_tmp=f_obs[(l_obs > contBandPass[ini]) & (l_obs < contBandPass[fin])]
-             cont_l=np.append(cont_l,cont_l_tmp)
-             cont_f=np.append(cont_f,cont_f_tmp)
-             ini=fin+1
-             fin=ini+1
-#       Appending last continuum points (calculating)
-        lastCont=FindPointsLine(contBandPass[-1])
-        cont_f=np.append(cont_f,lastCont)
-        cont_l=np.append(cont_l,contBandPass[-1])
+            cont_l_tmp=l_obs[(l_obs > contBandPass[ini]) & (l_obs < contBandPass[fin])]
+            cont_f_tmp=f_obs[(l_obs > contBandPass[ini]) & (l_obs < contBandPass[fin])]
+            cont_l=np.append(cont_l,cont_l_tmp)
+            cont_f=np.append(cont_f,cont_f_tmp)
+            ini=ini+2
+            fin=fin+2
+            
+#       Appending last continuum point (calculating)
+        try:
+            lastCont=FindPointsLine(contBandPass[-1])
+            cont_f=np.append(cont_f,lastCont)
+            cont_l=np.append(cont_l,contBandPass[-1])
+        except:
+            print('last cointinuum of the line outside the spectrum')
+        
         return cont_l,cont_f,line_l,line_f
 
 
-def computeEW(cont_l,cont_f,line_l,line_f, error=None):
+def computeEW(cont_l,cont_f,line_l,line_f, error=None, ax=None, name_fig=None):
     
     # Fitting the continuum points with a linear fit. 
     (a,b) = np.polyfit(cont_l,cont_f,deg=1)
@@ -100,9 +106,59 @@ def computeEW(cont_l,cont_f,line_l,line_f, error=None):
     
     dl = line_l[-1]-line_l[0]
     eEW = np.sqrt((2*dl-EW)*(dl-EW))/SN
-    #print(cont_f)
+    
+    if ax is not None:
+            ax.plot(cont_l, cont_f, 'ko', markersize=1)
+            ax.plot(line_l, line_f, 'ko', markersize=1)
+            ax.plot(np.append(cont_l, line_l), cont(np.append(cont_l, line_l)), 'g-')
+            ax.set_xlim(np.min(cont_l)-1, np.max(cont_l)+1)
+            ax.set_xlabel(r'$\lambda$')
+            ax.set_ylabel(r'Flux')
+            fig = ax.get_figure()
+            fig.tight_layout()
+            fig.savefig(name_fig, format='png')
+            plt.close(fig)
 
     return EW, eEW
+
+def computeBREAK(red_l,red_f,blue_l,blue_f, error=None, ax=None, name_fig=None):
+    
+    
+    F_red = integrate.trapezoid(red_f, red_l)
+    F_blue = integrate.trapezoid(blue_f, blue_l)
+
+    ratio = F_red/F_blue
+    
+    try:
+        S=np.append(blue_f, red_f)
+        N=error
+        SN=np.mean(np.divide(S,N))
+    except:
+        SN=np.mean(blue_f)/np.std(blue_f) # here i am
+        #calculating the signal to noise ratio only in the first defined band 
+    
+    # error bar estimation based on https://arxiv.org/pdf/astro-ph/0606341.pdf
+    #changed their equation (7) to depend only on EQW, d_LAMBDA and the S/N
+    
+    
+    e_ratio = np.sum(np.diff(blue_l)**2)*np.mean(blue_f)/SN
+    
+    
+    if ax is not None:
+            ax.plot(blue_l, blue_f, 'ko', markersize=1)
+            ax.plot(red_l, red_f, 'ko', markersize=1)
+            ax.hlines(F_blue/(blue_l[-1]-blue_l[0]), blue_l[0], blue_l[-1], color='blue')
+            ax.hlines(F_red/(red_l[-1]-red_l[0]), red_l[0], red_l[-1], color='red')
+            ax.set_xlim(np.min(blue_l)-1, np.max(red_l)+1)
+            ax.set_xlabel(r'$\lambda$')
+            ax.set_ylabel(r'Flux')
+            fig = ax.get_figure()
+            fig.tight_layout()
+            fig.savefig(name_fig, format='png')
+            plt.close(fig)
+
+    return ratio, e_ratio
+
 
 
 
@@ -147,7 +203,8 @@ def varsmooth(x, y, sig_x, xout=None, oversample=1):
 
 # Credit: PPXF, Cappellari
 
-def eqw(wave, flux, idx_definitions, error=None, sigma_fin=None, sigma_ini=None, FWHM_fin=None, FWHM_ini=None, z=None):#, name, do_figs=False):
+def eqw(wave, flux, idx_definitions, error=None, sigma_fin=None, sigma_ini=None, FWHM_fin=None,
+        FWHM_ini=None, z=None,path=None):
     
     # Function that gets the spectra, tweeks it in a way given by the user and calls the functions to make the calculation of the EW
     #
@@ -190,7 +247,7 @@ def eqw(wave, flux, idx_definitions, error=None, sigma_fin=None, sigma_ini=None,
                   sigma_ini, sigma_fin, FWHM_ini, FWHM_fin)
     
 
-    eqw_measurements = []
+    measurements = []
     # maybe there is a better way to not use this if-else for the error
     # but i cannot fugure it out now...   
     if error is not None:
@@ -198,35 +255,89 @@ def eqw(wave, flux, idx_definitions, error=None, sigma_fin=None, sigma_ini=None,
             try:
                 (cont_l,cont_f,line_l,line_f)=GetConts(wave,flux,line['defs'],line['conts'])
                 (cont_l,err_cont,line_l,err_f)=GetConts(wave,error,line['defs'],line['conts'])
+                ax = None
+                name_fig = None
                 
-                EW, eEW = computeEW(cont_l,cont_f,line_l,line_f, err_f)
-                eqw_measurements.append(EW)
-                eqw_measurements.append(eEW)
+                if path is not None:
+                    fig, ax = plt.subplots()
+                    fig.set_size_inches((5, 5))
+                    ax.errorbar(wave[(wave >= cont_l[0]) & (wave <=cont_l[-1])],
+                                flux[(wave >= cont_l[0]) & (wave <=cont_l[-1])], 
+                                yerr = error[(wave >= cont_l[0]) & (wave <=cont_l[-1])],
+                                fmt='k-')
+                    ax.axvspan(line['conts'][0],line['conts'][1], color='blue', alpha=0.5)
+                    ax.axvspan(line['conts'][2],line['conts'][3], color='red', alpha=0.5)
+                    vmin = np.min(np.append(cont_f,line_f))
+                    vmax = np.max(np.append(cont_f,line_f))
+                    ax.set_ylim(vmin-0.1*(vmax-vmin),vmax+0.1*(vmax-vmin))
+                    ax.vlines(line['defs'], vmin-0.1*(vmax-vmin), vmax+0.1*(vmax-vmin),
+                              linestyle='dashed', color='black')
+                    vmin = np.min(np.append(cont_l,line_l))
+                    vmax = np.max(np.append(cont_l,line_l))
+                    ax.set_xlim(vmin-1,vmax+1)
+                    name_fig=path+'/'+line['name']+'.png'
+
+                EW, eEW = computeEW(cont_l,cont_f,line_l,line_f, err_f, ax=ax, name_fig=name_fig)
+                measurements.append(EW)
+                measurements.append(eEW)
             
             except:
-                eqw_measurements.append(-99.9)
-                eqw_measurements.append(-99.9)
+                measurements.append(-99.9)
+                measurements.append(-99.9)
     else:
         for line in idx_definitions:
             try:
                 (cont_l,cont_f,line_l,line_f)=GetConts(wave,flux,line['defs'],line['conts'])
-                EW, eEW = computeEW(cont_l,cont_f,line_l,line_f)
-                eqw_measurements.append(EW)
-                eqw_measurements.append(eEW)
+                ax = None
+                name_fig = None
+                
+                if path is not None:
+                    fig, ax = plt.subplots()
+                    fig.set_size_inches((5, 5))
+                    ax.plot(wave[(wave >= cont_l[0]) & (wave <=cont_l[-1])],
+                            flux[(wave >= cont_l[0]) & (wave <=cont_l[-1])], 'k-')
+                    ax.axvspan(line['conts'][0],line['conts'][1], color='blue', alpha=0.5)
+                    ax.axvspan(line['conts'][2],line['conts'][3], color='red', alpha=0.5)
+                    vmin = np.min(np.append(cont_f,line_f))
+                    vmax = np.max(np.append(cont_f,line_f))
+                    ax.set_ylim(vmin-0.1*(vmax-vmin),vmax+0.1*(vmax-vmin))
+                    ax.vlines(line['defs'], vmin-0.1*(vmax-vmin), vmax+0.1*(vmax-vmin),
+                              linestyle='dashed', color='black')
+                    vmin = np.min(np.append(cont_l,line_l))
+                    vmax = np.max(np.append(cont_l,line_l))
+                    ax.set_xlim(vmin-1,vmax+1)
+                    name_fig=path+'/'+line['name']+'.png'
+                
+                if line['defs'][0] == line['defs'][1]:
+                    (red_l,red_f,blue_l,blue_f) = GetConts(wave,flux,line['conts'][0:2],line['conts'][2:4])
+                    EW, eEW = computeBREAK(red_l,red_f,blue_l,blue_f, ax=ax, name_fig=name_fig) 
+                else:
+                    EW, eEW = computeEW(cont_l,cont_f,line_l,line_f, ax=ax, name_fig=name_fig)
+                measurements.append(EW)
+                measurements.append(eEW)
             
             except:
-                eqw_measurements.append(-99.9)
-                eqw_measurements.append(-99.9)
+                measurements.append(-99.9)
+                measurements.append(-99.9)
 
-    return eqw_measurements
-
-
+    return measurements
 
 
 
 
-def pacce(filename, IndexDefs, Doplots = False, output_file = 'demo.txt', sigma_ini = None,
-          sigma_fin = None, FWHM_fin = None, FWHM_ini = None, z=None):
+
+
+def pacce(filename,
+          IndexDefs,
+          output_file = 'demo.txt',
+          path_plots = None,
+          sigma_ini = None,
+          sigma_fin = None,
+          FWHM_fin = None,
+          FWHM_ini = None,
+          z = None,
+          A_to_mag = None,
+          add_idx = None):
     
     '''
      This function computs EW of emission/absorption lines from an input file and an input spectrum. 
@@ -246,15 +357,19 @@ def pacce(filename, IndexDefs, Doplots = False, output_file = 'demo.txt', sigma_
     # loading idx definitions
 
     file = np.genfromtxt(IndexDefs, dtype=object, delimiter='|') # loading table
+    
     names = np.array([re.findall(r'\S+', t)[0] for t in file[:,0].astype(str)]) # converting the names extracted to the iddices names
     defs = np.array([np.array(re.findall(r'\d+\.\d+', t), dtype='<f8') for t in file[:,1].astype(str)]) # geting the feature definition (always two values)
-    conts = np.array([np.array(re.findall(r'\d+\.\d+', t), dtype='<f8') for t in file[:,2].astype(str)], dtype='object')# getting the continuum bands (any even number of values)
+    conts = [np.array(re.findall(r'\d+\.\d+', t), dtype='<f8') for t in file[:,2].astype(str)]# getting the continuum bands (any even number of values)
+    refs = np.array([re.findall(r'\S+', t)[0] for t in file[:,3].astype(str)]) #getting the refs
 
-    idx_definitions = np.empty(len(file), dtype=[('name', names.dtype.str),('defs', defs.dtype.str, (2,)),('conts', conts.dtype.str)])
+
+    idx_definitions = np.empty(len(file), dtype=[('name', names.dtype.str),('defs', defs.dtype.str, (2,)),('conts', 'O'), ('ref', refs.dtype.str)])
 
     idx_definitions['name'] = names
     idx_definitions['defs'] = defs
     idx_definitions['conts'] = conts
+    idx_definitions['ref'] = refs
 
     # going throught all the files listed in list
 
@@ -270,6 +385,9 @@ def pacce(filename, IndexDefs, Doplots = False, output_file = 'demo.txt', sigma_
     data_table['file'] = files
     data_table.set_index('file', inplace=True)
 
+    if path_plots is not None:
+        if not os.path.exists(path_plots): os.mkdir(path_plots)
+
     for file in files:
         try:
             wave, flux, error = np.genfromtxt(file, usecols=(0,1,2), unpack=True)
@@ -277,8 +395,34 @@ def pacce(filename, IndexDefs, Doplots = False, output_file = 'demo.txt', sigma_
             wave, flux = np.genfromtxt(file, usecols=(0,1), unpack=True)
             error = None
         
+        path=None
+        if path_plots is not None:
+            path = path_plots+'/indices_'+(file.split('/')[-1])
+            os.mkdir(path)
+        
         data_table.loc[file] = eqw(wave, flux, idx_definitions, error, sigma_fin,
-                                   sigma_ini, FWHM_fin, FWHM_ini, z)
+                                   sigma_ini, FWHM_fin, FWHM_ini, z, path=path)
+    
+    data_table = data_table.convert_dtypes()
+    float64_cols = list(data_table.select_dtypes(include='Float64'))
+    data_table[float64_cols] = data_table[float64_cols].astype(np.float64).values.tolist()
+    
+    try:
+        for idx in A_to_mag:
+            i = np.where(names == idx)[0][0]
+            dl = (idx_definitions[i]['defs'][-1]-idx_definitions[i]['defs'][0])
+            data_table['e_'+idx] = (2.5/np.log(10))*(data_table['e_'+idx]/(dl-data_table[idx]))
+            data_table[idx] = -2.5*np.log(1-(data_table[idx]/dl))
+    except:
+        print('No indices converted to mag')
+    
+    try:
+        with open(add_idx) as f:
+            for line in f:
+                data_table.eval(line, inplace=True)
+    except:
+        print('No additional indices were calculated')
+
     
     sourceFile = open(output_file, 'w')
     print(data_table.to_string(), file = sourceFile)
@@ -287,150 +431,3 @@ def pacce(filename, IndexDefs, Doplots = False, output_file = 'demo.txt', sigma_
     return data_table
 
 
-'''  
-    graph=0
-    fignumber=0
-    Computations_EW=[]
-    Computations_eEW=[]
-    Computations_SN=[]
-    Computations_Flux=[]
-    LIDs=[]
-    for line in defsfile:
-        line=re.sub('\n','',line)
-        line=re.sub(' ','',line)
-        if line[0] != '#':
-            # Getting the lines and continuum band passes from the input file.
-            # arrumar para ter o espectro de erro no simulate tambem.
-            (lineID,linelims,contBandPass)=defs(line)
-            try:
-                if simulate:
-                    EW_temp=[]
-                    (cont_l,cont_f,line_l,line_f)=GetConts(l_obs,f_obs,linelims,contBandPass)
-                    SN=np.mean(cont_f)/np.std(cont_f)
-                    FindPointsLine=interpolate.interp1d(l_obs,f_obs)
-                    (a_sim,b_sim)=np.polyfit(cont_l,cont_f,deg=1)
-                    ajustCont=a_sim*cont_l +b_sim
-                    sigma=sqrt((ajustCont-cont_f)**2)
-                    for i in range(0,SimTimes):                                      
-                        simCont=np.random.normal(cont_f,sigma)
-                    # Fitting the continuum points with a linear fit. 
-                        (a,b)=np.polyfit(cont_l,simCont,deg=1)
-                        aj=lambda x : x*a+b   # Function to use the quadrature integration metodod for the continuum
-                        FCont=integrate.quad(aj,linelims[0],linelims[1])[0]
-                        FLine=integrate.quad(FindPointsLine,linelims[0],linelims[1],epsrel=1E-2)[0]
-                        EWsim=(1.0-(FLine/FCont))*(linelims[1]-linelims[0])
-                        Flux=(FCont-FLine)
-                        EW_temp=np.append(EW_temp,EWsim)
-                    EW=np.mean(EW_temp)
-                    eEW=np.std(EW_temp)
-    #                    else:
-    #                           EW=-999
-    #                           eEW=-999
-
-                if not simulate:
-                 
-                    (cont_l,cont_f,line_l,line_f)=GetConts(l_obs,f_obs,linelims,contBandPass)
-                    FindPointsLine=interpolate.interp1d(l_obs,f_obs)
-                    # Fitting the continuum points with a linear fit. 
-                    (a,b)=np.polyfit(cont_l,cont_f,deg=1)
-                    aj=lambda x : x*a+b   # Function to use the quadrature integration metodod for the continuum
-                    FCont=integrate.quad(aj,linelims[0],linelims[1])[0]
-                    FLine=integrate.quad(FindPointsLine,linelims[0],linelims[1],epsrel=1E-2)[0]
-                    EW=(1.0-(FLine/FCont))*(linelims[1]-linelims[0])
-                    Flux=(FCont-FLine)
-                    if error:
-                        FindPoints=interpolate.interp1d(l_obs,f_obs)
-                        S=FindPoints(cont_l)
-                        FindPoints=interpolate.interp1d(l_obs,ef_obs)
-                        N=FindPoints(cont_l)
-                        SN=np.mean(S/N)
-                    if not error:
-                        SN=np.mean(cont_f)/np.std(cont_f)
-                    eEW=np.sqrt(1.0+(FCont/FLine)) *(((linelims[1]-linelims[0]) - EW)/SN) #https://arxiv.org/pdf/astro-ph/0606341.pdf
-                    EW=EW
-                    eEW=eEW
-    #                    else:
-    #                       EW=-999.
-    #                       eEW=-999.
-            except:
-                    EW=-999.
-                    eEW=-999.
-                    SN=-999.
-                    Flux=-999.
-                    print(galname, "<File not found or problems in the file>")
-                
-#            print lineID[0], EW, eEW, SN
-            LIDs.append(lineID[0])
-            Computations_EW=np.append(Computations_EW,EW)
-            Computations_eEW=np.append(Computations_eEW,eEW)
-            Computations_SN=np.append(Computations_SN,SN)
-            Computations_Flux=np.append(Computations_Flux,Flux)
-
-    ###################################################################################
-    #                                                                                 #
-    #                                                                                 #
-    #                                      Plots                                      #
-    #                                                                                 #
-    #                                                                                 #
-    ###################################################################################
-            if Doplots:
-                    if (os.path.exists('Pacce_Figures')==False): 
-                        os.mkdir('Pacce_Figures')
-
-                    mpl.rcParams['axes.labelsize']= 10
-                    mpl.rcParams['legend.fontsize']= 10
-                    mpl.rcParams['xtick.major.size']= 8
-                    mpl.rcParams['xtick.minor.size']= 4
-                    mpl.rcParams['ytick.major.size']= 8
-                    mpl.rcParams['ytick.minor.size']= 4
-                    mpl.rcParams['xtick.labelsize']=10
-                    mpl.rcParams['ytick.labelsize']= 10
-                    if (graph <= 6):
-                        if graph ==0:
-                            fig=plt.figure(figsize=(7.9,8.5))
-                        graph=graph+1
-                        ax=plt.subplot(3,2,graph)
-                        plt.subplots_adjust(left=None, bottom=None, right=None, top=None, wspace=None, hspace=0.6)
-                        # Observed spectrum
-                        l_obsLine=l_obs[(l_obs >= contBandPass[0]) & (l_obs <=contBandPass[-1])]
-                        f_obsLine=f_obs[(l_obs >= contBandPass[0]) & (l_obs <=contBandPass[-1])]
-                        plt.plot(l_obsLine,f_obsLine,color='blue') #,label='Spectrum')
-                        # line and line limits
-                        ax.plot(line_l,line_f,color='red', label=str(lineID[0]))
-                        ax.axvline(linelims[0],0,1,color='red',ls='--')
-                        ax.axvline(linelims[1],0,1,color='red',ls='--')#,label='limits')
-                        setp(ax.get_xticklabels(), visible=True, rotation=60)
-                        # Continuum points
-                        ax.plot(cont_l,cont_f,'ro')#,label='Cont. Points')
-                        cont_ajust=np.arange(cont_l[0],cont_l[-1],0.01)
-                        ajust=cont_ajust*a + b
-                        ax.plot(cont_ajust,ajust,color='black',ls=':', label='Cont.') #label='Cont '+str(lineID[0])
-                        ax.set_xlabel('$\lambda$')
-                        ax.legend(frameon=False,prop={'size':8})
-                        #text(0.5, 0.5,str(FLine/FCont), horizontalalignment='center',verticalalignment='center',transform=ax.transAxes,color='red')
-                        if EW == -999:
-                            text(0.5, 0.5,'NOT USED', horizontalalignment='center',verticalalignment='center',transform=ax.transAxes,color='red')
-                    if graph == 6:
-                        outname=os.path.splitext(galname)[0]
-                        #print outname 
-                        title=outname
-                        fig.suptitle(title, fontsize=16)
-                        savefig('./Pacce_Figures/'+outname+'_'+str(fignumber)+'.png')
-                        fignumber=fignumber+1
-                        graph=0
-                        clf()
-                       # try:
-                       #    ax.close()
-                       # except:
-                       #    fig.delaxes(ax)
-                    else:
-                       outname=os.path.splitext(galname)[0]
-                       
-                       title=outname
-                       fig.suptitle(title, fontsize=16)
-                       savefig('./Pacce_Figures/'+outname+'_'+str(fignumber)+'.png')
-                
-    Computations=np.column_stack((Computations_EW,Computations_eEW,Computations_Flux,Computations_SN))
-    return LIDs, Computations
-
-'''
