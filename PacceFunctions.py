@@ -2,12 +2,12 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.mlab as mlab
 from scipy import interpolate
 from scipy import integrate
 import re
 import pandas as pd
 from astropy import constants
+from astropy.io import fits
 
 c = constants.c.to('km/s').value
 
@@ -227,6 +227,17 @@ def eqw(wave, flux, idx_definitions, error=None, sigma_fin=None, sigma_ini=None,
     #dwave = np.diff(wave)
     #dwave = np.append(dwave, dwave[-1])
     
+    try:
+        sigma_ini = np.genfromtxt(sigma_ini)
+        sigma_ini = sigma_ini[:,1]
+    except:
+        try:
+            FWHM_ini = np.genfromtxt(FWHM_ini)
+            FWHM_ini = FWHM_ini[:,1]
+        except:
+            pass
+    
+
     
     try:
         FWHM_ini = (sigma_ini*2.355/c)*wave
@@ -238,15 +249,17 @@ def eqw(wave, flux, idx_definitions, error=None, sigma_fin=None, sigma_ini=None,
         print('Using FWHM_fin provided', end='\r')
 
     try:
+        print('start')
         sigma = np.sqrt(np.power(FWHM_fin,2)-np.power(FWHM_ini,2))/2.355
         sigma = np.nan_to_num(sigma) #turn negative values to zero
-        sigma = sigma.clip(0.001) # add a really small number instead os zero (code crashed otherwise)
+        sigma = sigma.clip(0.01) # add a really small number instead of zero (code crashed otherwise)
+        print('begining of convolution')
         flux = varsmooth(x = wave, y = flux, sig_x = sigma)
+        print('finish')
     except:
         print('Convolution not performed. Check the input parameters you gave for the convolution. \n',
                   sigma_ini, sigma_fin, FWHM_ini, FWHM_fin)
     
-
     measurements = []
     # maybe there is a better way to not use this if-else for the error
     # but i cannot fugure it out now...   
@@ -282,8 +295,8 @@ def eqw(wave, flux, idx_definitions, error=None, sigma_fin=None, sigma_ini=None,
                 measurements.append(eEW)
             
             except:
-                measurements.append(-99.9)
-                measurements.append(-99.9)
+                measurements.append(np.nan)
+                measurements.append(np.nan)
     else:
         for line in idx_definitions:
             try:
@@ -317,8 +330,8 @@ def eqw(wave, flux, idx_definitions, error=None, sigma_fin=None, sigma_ini=None,
                 measurements.append(eEW)
             
             except:
-                measurements.append(-99.9)
-                measurements.append(-99.9)
+                measurements.append(np.nan)
+                measurements.append(np.nan)
 
     return measurements
 
@@ -328,6 +341,7 @@ def eqw(wave, flux, idx_definitions, error=None, sigma_fin=None, sigma_ini=None,
 
 
 def pacce(filename,
+          path_to_files,
           IndexDefs,
           output_file = 'demo.txt',
           path_plots = None,
@@ -337,7 +351,7 @@ def pacce(filename,
           FWHM_ini = None,
           z = None,
           A_to_mag = None,
-          add_idx = None):
+          compute_idx = None):
     
     '''
      This function computs EW of emission/absorption lines from an input file and an input spectrum. 
@@ -373,7 +387,21 @@ def pacce(filename,
 
     # going throught all the files listed in list
 
-    files = np.genfromtxt(filename, dtype=str)
+    #files = np.genfromtxt(filename, dtype=str)
+    
+    original_input = pd.read_table(filename)
+    
+    file_table =  original_input.copy()
+    if 'FWHM' not in file_table:
+        print('FWHM not found in table')
+        file_table['FWHM'] = FWHM_ini
+    if 'sigma' not in file_table:
+        print('sigma not found in table')
+        file_table['sigma'] = sigma_ini
+    if 'z' not in file_table:
+        print('z not found in table')
+        file_table['z'] = z
+    
 
     # create empty array to add the info from the eqw
 
@@ -382,52 +410,66 @@ def pacce(filename,
     header = np.insert(header, 0, 'file')
 
     data_table = pd.DataFrame(columns = header)
-    data_table['file'] = files
+    data_table['file'] = file_table['file'].copy()
     data_table.set_index('file', inplace=True)
+    file_table.set_index('file', inplace=True)
 
     if path_plots is not None:
         if not os.path.exists(path_plots): os.mkdir(path_plots)
 
-    for file in files:
+    for file in file_table.index:
         try:
-            wave, flux, error = np.genfromtxt(file, usecols=(0,1,2), unpack=True)
-        except:
-            wave, flux = np.genfromtxt(file, usecols=(0,1), unpack=True)
+            wave, flux, error = np.genfromtxt(os.path.join(path_to_files,file), usecols=(0,1,2), unpack=True)
+        except UnicodeDecodeError:
+            x = fits.open(os.path.join(path_to_files,file))
+            h = x[0].header
+            d = x[0].data
+            wave = np.arange(h['CRVAL1'], h['CRVAL1']+h['NAXIS1']*h['CDELT1'], h['CDELT1'])
+            flux = d
+            error = None
+        except ValueError:
+            wave, flux = np.genfromtxt(os.path.join(path_to_files,file), usecols=(0,1), unpack=True)
             error = None
         
         path=None
         if path_plots is not None:
-            path = path_plots+'/indices_'+(file.split('/')[-1])
+            path = os.path.join(path_plots,'indices_'+file)
             os.mkdir(path)
         
-        data_table.loc[file] = eqw(wave, flux, idx_definitions, error, sigma_fin,
-                                   sigma_ini, FWHM_fin, FWHM_ini, z, path=path)
+        data_table.loc[file] = eqw(wave=wave, flux=flux, idx_definitions=idx_definitions,
+                                   error=error, sigma_fin=sigma_fin,
+                                   sigma_ini = file_table.loc[file]['sigma'],
+                                   FWHM_fin = FWHM_fin,
+                                   FWHM_ini = file_table.loc[file]['FWHM'], 
+                                   z = file_table.loc[file]['z'], path=path)
     
     data_table = data_table.convert_dtypes()
     float64_cols = list(data_table.select_dtypes(include='Float64'))
     data_table[float64_cols] = data_table[float64_cols].astype(np.float64).values.tolist()
-    
+    data_table.dropna(axis=1, how='all', inplace=True)
+
     try:
         for idx in A_to_mag:
             i = np.where(names == idx)[0][0]
             dl = (idx_definitions[i]['defs'][-1]-idx_definitions[i]['defs'][0])
             data_table['e_'+idx] = (2.5/np.log(10))*(data_table['e_'+idx]/(dl-data_table[idx]))
-            data_table[idx] = -2.5*np.log(1-(data_table[idx]/dl))
+            data_table[idx] = -2.5*np.log10(1-(data_table[idx]/dl))
     except:
         print('No indices converted to mag')
     
     try:
-        with open(add_idx) as f:
+        with open(compute_idx) as f:
             for line in f:
                 data_table.eval(line, inplace=True)
     except:
         print('No additional indices were calculated')
 
-    
+    original_input = original_input.join(data_table, on='file')
+
     sourceFile = open(output_file, 'w')
-    print(data_table.to_string(), file = sourceFile)
+    print(original_input.to_string(index=False), file = sourceFile)
     sourceFile.close()
 
-    return data_table
+    return original_input
 
 

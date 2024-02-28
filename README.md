@@ -16,19 +16,14 @@ sigma_ini, sigma_fin, FWHM_fin, FWHM_ini: _ini correspond to the resolution of t
     sigma in km/s and FWHM in A. they can be mixed also (e.g. sigma_fin=300, FWHM_ini=2.5) 
 z: redshift of the spectra. this needs to be improved to be passed along with the file list.
 
-For future implementations (by order of priority):
- 
-- get the file list and have all the info the user would like to have in the final table (e.g. age,
-    metalicity...) and just append the columns adding the Indices. Use this to have a column with
-    FWHM/sigma and z to be used later.
-- read from both txt and fits
+For future implementations:
 
-- add option to 'clean' the table when all the indices are null i.e. when the spectral range does not
-    reach that definition.
+- convert into a proper package
 - add option to reorder the table in increasing wavelength in the middle of the line.
 - implement the possibility of datacubes (extract the spectra, correct for the radial velocity and
     broaden them, measure the indices and save to a table with 'filename_i_j')
 - add MC option to estimate errors
+- multiprocessing?
 
 
 
