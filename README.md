@@ -22,7 +22,6 @@ For future implementations:
 - add option to reorder the table in increasing wavelength in the middle of the line.
 - implement the possibility of datacubes (extract the spectra, correct for the radial velocity and
     broaden them, measure the indices and save to a table with 'filename_i_j')
-- add MC option to estimate errors
 - multiprocessing?
 
 
