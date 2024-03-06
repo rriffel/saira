@@ -289,6 +289,8 @@ def eqw(wave,
             flux_new = varsmooth(x = wave, y = flux, sig_x = sigma)
             error_new = varsmooth_error(x = wave, error=error, sig_x = sigma) #one needs to convolve the variance with the square of the kernel
             print('Convolution successfull from', FWHM_ini, 'to', FWHM_fin)
+            old_flux = np.copy(flux) #just to have the option to plot.
+            old_error = np.copy(error) #just to have the option to plot.
             flux = flux_new
             error = error_new
         except:
@@ -308,10 +310,14 @@ def eqw(wave,
                 if path is not None:
                     fig, ax = plt.subplots()
                     fig.set_size_inches((5, 5))
+                    if (FWHM_ini and FWHM_fin) is not None:
+                        ax.plot(wave[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))],
+                                    old_flux[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))],
+                                    color='silver')
                     ax.errorbar(wave[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))],
                                 flux[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))], 
                                 yerr = error[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))],
-                                fmt='k-')
+                                fmt='k', elinewidth=1)
                     ax.axvspan(line['conts'][0],line['conts'][1], color='blue', alpha=0.5)
                     ax.axvspan(line['conts'][2],line['conts'][3], color='red', alpha=0.5)
                     vmin = np.min(flux[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))])
@@ -326,9 +332,10 @@ def eqw(wave,
                     else:
                         (a,b) = np.polyfit(cont_l,cont_f,deg=1)
                         cont = lambda x : x*a+b 
-                        ax.plot(cont_l, cont_f, 'ko', markersize=1)
+                        #ax.plot(cont_l, cont_f, 'ko', markersize=1)
                         ax.plot(line_l, line_f, 'ko', markersize=1)
-                        ax.plot(cont_l, cont(cont_l), 'g-')
+                        ax.plot([np.min(line['conts']),np.max(line['conts'])],
+                                 [cont(np.min(line['conts'])),cont(np.max(line['conts']))], 'g-')
                     ax.set_xlim(np.min(line['conts'])-1, np.max(line['conts'])+1)
                     ax.set_xlabel(r'$\lambda$')
                     ax.set_ylabel(r'Flux')
@@ -381,7 +388,9 @@ def eqw(wave,
             sigma = np.sqrt(np.power(FWHM_fin,2)-np.power(FWHM_ini,2))/2.355
             sigma = np.nan_to_num(sigma) #turn negative values to zero
             sigma = sigma.clip(0.01) # add a really small number instead of zero (code crashed otherwise)
+            old_flux = np.copy(flux)
             flux = varsmooth(x = wave, y = flux, sig_x = sigma)
+
             print('Convolution successfull from', FWHM_ini, 'to', FWHM_fin)
         except:
             print('Convolution not performed. Check FWHM ini and fin: ',FWHM_ini, FWHM_fin)
@@ -393,6 +402,10 @@ def eqw(wave,
                 if path is not None:
                     fig, ax = plt.subplots()
                     fig.set_size_inches((5, 5))
+                    if (FWHM_ini and FWHM_fin) is not None:
+                        ax.plot(wave[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))],
+                                old_flux[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))], 'k-')
+
                     ax.plot(wave[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))],
                             flux[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))], 'k-')
                     ax.axvspan(line['conts'][0],line['conts'][1], color='blue', alpha=0.5)
@@ -412,9 +425,10 @@ def eqw(wave,
                     else:
                         (a,b) = np.polyfit(cont_l,cont_f,deg=1)
                         cont = lambda x : x*a+b 
-                        ax.plot(cont_l, cont_f, 'ko', markersize=1)
-                        ax.plot(line_l, line_f, 'ko', markersize=1)
-                        ax.plot(cont_l, cont(cont_l), 'g-')
+                        #ax.plot(cont_l, cont_f, 'ko', markersize=1)
+                        ax.plot(line_l, line_f, 'ko', markersize=2)
+                        ax.plot([np.min(line['conts']),np.max(line['conts'])],
+                                 [cont(np.min(line['conts'])),cont(np.max(line['conts']))], 'g-')
                     ax.set_xlim(np.min(line['conts'])-1, np.max(line['conts'])+1)
                     ax.set_xlabel(r'$\lambda$')
                     ax.set_ylabel(r'Flux')
