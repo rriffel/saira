@@ -1,43 +1,55 @@
-#!/usr/bin/python
-import os, glob
-from pylab import *
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.mlab as mlab
 from scipy import interpolate
 from scipy import integrate
-from  scipy import ndimage
 import re
-import time
+from astropy import constants
 
-def defs(l):
+c = constants.c.to('km/s').value
+
+def read_idx_defs(ref_table):
     '''
-    Auxiliar Function to ComputEW. This function reads each line in from input table with the line definitiosn. 
-    Usage: defs(l)
+    Function designed to read the table containing the definitions of the indices to be used by the rest of the code.
+
+    Parameters:
+    
+    ref_table: ascii file with the information regarding the indices.
+    
     '''
-    line=re.sub('\n','',l)
-    currentLineLims=[]
-    currentContsLims=[]
-    lineIDs=[]
-    if line[0] != '#':
-      line=(re.split('\|',re.sub(' ','',line)))
-      lineID=re.sub(' ','',line[0])
-      lineIDs.append(lineID)
-      linelims=re.split('\-',line[1])
-      currentLineLims=np.append(currentLineLims,float(linelims[0]))
-      currentLineLims=np.append(currentLineLims,float(linelims[1]))
-      clims=re.split('\,',line[2])
-      for i in range(0,len(clims)):
-          cs=re.split('\-',clims[i])
-          for c in cs:
-             currentContsLims=np.append(currentContsLims,float(c))
-    return lineIDs,currentLineLims,currentContsLims
+    file = np.genfromtxt(ref_table, dtype=object, delimiter='|') # loading table
+    
+    names = np.array([re.findall(r'\S+', t)[0] for t in file[:,0].astype(str)]) # converting the names extracted to the iddices names
+    defs = np.array([np.array(re.findall(r'\d+\.\d+', t), dtype='<f8') for t in file[:,1].astype(str)]) # geting the feature definition (always two values)
+    conts = [np.array(re.findall(r'\d+\.\d+', t), dtype='<f8') for t in file[:,2].astype(str)]# getting the continuum bands (any even number of values)
+    refs = np.array([re.findall(r'\S+', t)[0] for t in file[:,3].astype(str)]) #getting the refs
+
+
+    idx_definitions = np.empty(len(file), dtype=[('name', names.dtype.str),('defs', defs.dtype.str, (2,)),('conts', 'O'), ('ref', refs.dtype.str)])
+
+    idx_definitions['name'] = names
+    idx_definitions['defs'] = defs
+    idx_definitions['conts'] = conts
+    idx_definitions['ref'] = refs
+
+    return idx_definitions
+
 
 
 def GetConts(l_obs,f_obs,linelims,contBandPass):
+        '''
+        Function to cut a spectrum given a line definition.
+
+        Parameters:
+        l_obs: wavelength array for the oservations
+        f_obs: flux array with the spectrum
+        linelims: array with the begining and end of the line definition
+        contBandPass: array that accepts only even numbers >= 4 and takes them pair-wise to define the continuum
+            i.e. contBandPass[0],contBandPass[1] are the limits for the first band pass
+        
+        '''
         # Cutting the parts of the spectrum with the lines and adding the limits.
         line_l=l_obs[(l_obs >= linelims[0]) & (l_obs <=linelims[1])]
-        line_f=f_obs[(l_obs >= linelims[0]) & (l_obs <=linelims[1])]
+        line_f=f_obs[(l_obs >= linelims[0]) & (l_obs <=linelims[1])] 
         FindPointsLine=interpolate.interp1d(l_obs,f_obs)
         first=FindPointsLine(linelims[0])
         last=FindPointsLine(linelims[1])
@@ -50,199 +62,394 @@ def GetConts(l_obs,f_obs,linelims,contBandPass):
         cont_f=[]
         ini=0
         fin=1
-#       Appending first continuum points (calculating)
-        firstCont=FindPointsLine(contBandPass[0])
-        cont_f=np.append(firstCont,cont_f)
-        cont_l=np.append(contBandPass[0],cont_l)
         for i in range(0,(int(len(contBandPass)/2))):
-             cont_l_tmp=l_obs[(l_obs > contBandPass[ini]) & (l_obs < contBandPass[fin])]
-             cont_f_tmp=f_obs[(l_obs > contBandPass[ini]) & (l_obs < contBandPass[fin])]
-             cont_l=np.append(cont_l,cont_l_tmp)
-             cont_f=np.append(cont_f,cont_f_tmp)
-             ini=fin+1
-             fin=ini+1
-#       Appending last continuum points (calculating)
-        lastCont=FindPointsLine(contBandPass[-1])
-        cont_f=np.append(cont_f,lastCont)
-        cont_l=np.append(cont_l,contBandPass[-1])
-        return cont_l,cont_f,line_l,line_f 
-
-
-
-def ComputEW(galname,IndexDefs,Doplots=True,simulate=False,SimTimes=100,treshold=0.):
-    
-    '''
-     This function computs EW of emission/absorption lines from an input file and an input spectrum. It returns the line ID, Equivalent Width, Equivalent Width errors, Flux and line SNR.
-     
-     
-     usage: ComputEW(galname,IndexDefs,Doplots=True/False,simulate=False,SimTimes=100,treshold=0.)
-     galname: input ASCII file name
-     IndexDefs: input file with the indexes definitions
-     Doplots: True or False
-     simulate: True or False
-     SimTimes: integer with the number of simulations
-     treshold: fraction of the line continuum compared with the bandpass.
-    
-    '''
-
-
-    c=open(IndexDefs)
-    defsfile=c.readlines()
-    try:
-        test=np.loadtxt(galname,usecols=(2,))
-        error=True
-    except:
-        error=False
-
-    if error:
-        (l_obs,f_obs,ef_obs)=np.loadtxt(galname,usecols=(0,1,2),unpack=True)
-    if not error:
-        (l_obs,f_obs)=np.loadtxt(galname,usecols=(0,1),unpack=True)
-
-
-
-    graph=0
-    fignumber=0
-    Computations_EW=[]
-    Computations_eEW=[]
-    Computations_SN=[]
-    Computations_Flux=[]
-    LIDs=[]
-    for line in defsfile:
-        line=re.sub('\n','',line)
-        line=re.sub(' ','',line)
-        if line[0] != '#':
-            # Getting the lines and continuum band passes from the input file.
-            # arrumar para ter o espectro de erro no simulate tambem.
-            (lineID,linelims,contBandPass)=defs(line)
+            cont_l_tmp = []
+            cont_f_tmp = []
+            #Appending first continuum points (calculating)
+            
             try:
-                if simulate:
-                    EW_temp=[]
-                    (cont_l,cont_f,line_l,line_f)=GetConts(l_obs,f_obs,linelims,contBandPass)
-                    SN=np.mean(cont_f)/np.std(cont_f)
-                    FindPointsLine=interpolate.interp1d(l_obs,f_obs)
-                    (a_sim,b_sim)=np.polyfit(cont_l,cont_f,deg=1)
-                    ajustCont=a_sim*cont_l +b_sim
-                    sigma=sqrt((ajustCont-cont_f)**2)
-                    for i in range(0,SimTimes):                                      
-                        simCont=np.random.normal(cont_f,sigma)
-                    # Fitting the continuum points with a linear fit. 
-                        (a,b)=np.polyfit(cont_l,simCont,deg=1)
-                        aj=lambda x : x*a+b   # Function to use the quadrature integration metodod for the continuum
-                        FCont=integrate.quad(aj,linelims[0],linelims[1])[0]
-                        FLine=integrate.quad(FindPointsLine,linelims[0],linelims[1],epsrel=1E-2)[0]
-                        EWsim=(1.0-(FLine/FCont))*(linelims[1]-linelims[0])
-                        Flux=(FCont-FLine)
-                        EW_temp=np.append(EW_temp,EWsim)
-                    EW=np.mean(EW_temp)
-                    eEW=np.std(EW_temp)
-    #                    else:
-    #                           EW=-999
-    #                           eEW=-999
-
-                if not simulate:
-                 
-                    (cont_l,cont_f,line_l,line_f)=GetConts(l_obs,f_obs,linelims,contBandPass)
-                    FindPointsLine=interpolate.interp1d(l_obs,f_obs)
-                    # Fitting the continuum points with a linear fit. 
-                    (a,b)=np.polyfit(cont_l,cont_f,deg=1)
-                    aj=lambda x : x*a+b   # Function to use the quadrature integration metodod for the continuum
-                    FCont=integrate.quad(aj,linelims[0],linelims[1])[0]
-                    FLine=integrate.quad(FindPointsLine,linelims[0],linelims[1],epsrel=1E-2)[0]
-                    EW=(1.0-(FLine/FCont))*(linelims[1]-linelims[0])
-                    Flux=(FCont-FLine)
-                    if error:
-                        FindPoints=interpolate.interp1d(l_obs,f_obs)
-                        S=FindPoints(cont_l)
-                        FindPoints=interpolate.interp1d(l_obs,ef_obs)
-                        N=FindPoints(cont_l)
-                        SN=np.mean(S/N)
-                    if not error:
-                        SN=np.mean(cont_f)/np.std(cont_f)
-                    eEW=np.sqrt(1.0+(FCont/FLine)) *(((linelims[1]-linelims[0]) - EW)/SN) #https://arxiv.org/pdf/astro-ph/0606341.pdf
-                    EW=EW
-                    eEW=eEW
-    #                    else:
-    #                       EW=-999.
-    #                       eEW=-999.
+                firstCont=FindPointsLine(contBandPass[ini])
+                cont_f_tmp=np.append(cont_f_tmp, firstCont)
+                cont_l_tmp=np.append(cont_l_tmp, contBandPass[ini])
             except:
-                    EW=-999.
-                    eEW=-999.
-                    SN=-999.
-                    Flux=-999.
-                    print(galname, "<File not found or problems in the file>")
+                pass #print('1st cointinuum of the line outside the spectrum')
+            
+            cont_l_tmp=np.append(cont_l_tmp, l_obs[(l_obs > contBandPass[ini]) & (l_obs < contBandPass[fin])])
+            cont_f_tmp=np.append(cont_f_tmp, f_obs[(l_obs > contBandPass[ini]) & (l_obs < contBandPass[fin])])
+            
+            #Appending last continuum point (calculating)
+            try:
+                lastCont=FindPointsLine(contBandPass[fin])
+                cont_f_tmp=np.append(cont_f_tmp,lastCont)
+                cont_l_tmp=np.append(cont_l_tmp,contBandPass[fin])
+            except:
+                pass #print('last cointinuum of the line outside the spectrum')
+            
+            cont_f = np.append(cont_f, integrate.trapezoid(cont_f_tmp, cont_l_tmp)/(cont_l_tmp[-1]-cont_l_tmp[0]))
+            cont_l = np.append(cont_l,(cont_l_tmp[-1]+cont_l_tmp[0])/2.0)
+            ini=ini+2
+            fin=fin+2
+        #print(cont_l,cont_f,line_l,line_f)
+        return cont_l,cont_f,line_l,line_f
+
+
+def computeEW(cont_l,cont_f,line_l,line_f):
+    
+    # Fitting the continuum points with a linear fit. 
+    (a,b) = np.polyfit(cont_l,cont_f,deg=1)
+    cont = lambda x : x*a+b   # Function to use the quadrature integration metodod for the continuum
+
+    ratio = 1 - np.divide(line_f, cont(line_l))
+
+    EW = integrate.trapezoid(ratio, line_l)
+
+    return EW
+
+def computeBREAK(red_l,red_f,blue_l,blue_f, ax=None, name_fig=None):
+    
+    ratio = red_f/blue_f
+
+    return ratio
+
+
+
+
+################################################################################
+
+def varsmooth(x, y, sig_x, xout=None, oversample=1):
+    """    
+    Fourier convolution with a Gaussian with variable sigma per pixel
+    using FFT and analytic Fourier Transform of the Gaussian (like ppxf).
+    Convolve a vector or the first dimension (all columns) of an array.
+    
+    Implements Algorithm 1 in Cappellari+22 (MNRAS submitted)
+    https://ui.adsabs.harvard.edu/abs/2022arXiv220814974C
+
+    :param x: coordinate of every pixel in y.
+    :param y: input vector or array of colum-spectra.
+    :param sig_x: vector with Gaussian sigma of every pixel in units of x.
+    :param oversample: oversampling before convolution.
+    :param xout: optional output x coordinate used to compute the convolved y.
+    :return: convolved vector or columns of the array y.
+
+    """
+    # Stretches spectrum to have equal sigma in the new coordinate
+    sig = sig_x/np.gradient(x)
+    sig_max = np.max(sig)*oversample
+    xs = np.cumsum(sig_max/sig)
+    n = int(np.ceil(xs[-1] - xs[0]))
+    x_new = np.linspace(xs[0], xs[-1], n)
+    y_new = interpolate.interp1d(xs, y.T)(x_new)
+
+    # Convolve spectrum with a Gaussian using analytic FT like pPXF
+    npad = 2**int(np.ceil(np.log2(n)))
+    ft = np.fft.rfft(y_new, npad)
+    w = np.linspace(0, np.pi*sig_max, ft.shape[-1])
+    ft_gau = np.exp(-0.5*w**2)
+    y_conv = np.fft.irfft(ft*ft_gau, npad).T[:n]
+
+    if xout is not None:
+        xs = interpolate.interp1d(x, xs)(xout)
+
+    return interpolate.interp1d(x_new, y_conv.T)(xs).T
+
+################################################################################
+
+def varsmooth_error(x, error, sig_x, xout=None, oversample=1):
+    """
+    This is a trial to change varsmooth algorithm to be able to propagate the 
+    uncertaities in the spectrum, based on the calculations done by Randolf Klein
+    https://ui.adsabs.harvard.edu/abs/2021RNAAS...5...39K/abstract
+    
+    Fourier convolution with a Gaussian with variable sigma per pixel
+    using FFT and analytic Fourier Transform of the Gaussian (like ppxf).
+    Convolve a vector or the first dimension (all columns) of an array.
+    
+    Implements Algorithm 1 in Cappellari+22 (MNRAS submitted)
+    https://ui.adsabs.harvard.edu/abs/2022arXiv220814974C
+
+    :param x: coordinate of every pixel in y.
+    :param error: input vector or array of colum-spectra.
+    :param sig_x: vector with Gaussian sigma of every pixel in units of x.
+    :param oversample: oversampling before convolution.
+    :param xout: optional output x coordinate used to compute the convolved y.
+    :return: convolved vector or columns of the array y.
+
+    """
+    y = error**2 #one needs to convolve the vatriance not the error
+    sig_x = sig_x/np.sqrt(2) #one needs to convolve with the square of the
+    #kernel of the convolution. in hte case of a gaussian kernel, that is
+    #a gaussian with sigma/sqrt(2).
+
+    # Stretches spectrum to have equal sigma in the new coordinate
+    sig = sig_x/np.gradient(x)
+    sig_max = np.max(sig)*oversample
+    xs = np.cumsum(sig_max/sig)
+    n = int(np.ceil(xs[-1] - xs[0]))
+    x_new = np.linspace(xs[0], xs[-1], n)
+    y_new = interpolate.interp1d(xs, y.T)(x_new)
+
+    # Convolve spectrum with a Gaussian using analytic FT like pPXF
+    npad = 2**int(np.ceil(np.log2(n)))
+    ft = np.fft.rfft(y_new, npad)
+    w = np.linspace(0, np.pi*sig_max, ft.shape[-1])
+    ft_gau = np.exp(-0.5*w**2)
+    y_conv = np.fft.irfft(ft*ft_gau, npad).T[:n]
+
+    if xout is not None:
+        xs = interpolate.interp1d(x, xs)(xout)
+
+    return np.sqrt(interpolate.interp1d(x_new, y_conv.T)(xs).T)
+
+
+# Credit: PPXF, Cappellari
+
+def eqw(wave, 
+        flux,
+        idx_definitions,
+        error=None,
+        simulate = None,
+        sigma_fin=None,
+        sigma_ini=None,
+        FWHM_fin=None,
+        FWHM_ini=None,
+        R_fin=None,
+        R_ini=None,
+        z=None,
+        path=None):
+    
+    # Function that gets the spectra, tweeks it in a way given by the user and calls the functions to make the calculation of the EW
+    #
+    # Parameters:
+    #
+    # wave: array of the wavlength array of the spectra
+    # flux: flux of the spectra you want to calculate the EW
+    # idx_definitions: output table from the defs function i.e. fist row: names, second row: wavelength limits for the feature,
+    #   third row: wavlength limits for the continuum bands 
+    # sigma_fin: velocity dispersion to be used in the convulution with a gaussina kernel
+    # FWHM_model: initial velocity dispersion. can be both a number or an array.
+    # do_figs: if you want the code to show you the calculations for each line.
+    #
+    # 
+    #
+
+    #check if the code is getting already the output from read_idx_defs of if its the file definition.
+
+    try:
+        tmp = idx_definitions.dtype
+    except AttributeError:
+        idx_definitions = read_idx_defs(idx_definitions)
+
+    #redshift correction
+    if z is not None:
+        wave = wave/(1+z)
+    
+    #checking for a file with the sigma/FWHM info
+    try:
+        sigma_ini = np.genfromtxt(sigma_ini)
+        sigma_ini = sigma_ini[:,1]
+    except:
+        try:
+            FWHM_ini = np.genfromtxt(FWHM_ini)
+            FWHM_ini = FWHM_ini[:,1]
+        except:
+            try:
+               R_ini = np.genfromtxt(R_ini) 
+               R_ini = R_ini[:,1]
+            except:
+                pass
+
+            
+    
+    #converting sigma or R to FWHM
+    try:
+        FWHM_ini = (sigma_ini*2.355/c)*wave
+    except:
+        try:
+            FWHM_ini = np.divide(wave,R_ini)
+        except:
+            pass #print('Using FWHM_ini provided', end='\r')
+    try:
+        FWHM_fin = (sigma_fin*2.355/c)*wave
+    except:
+        try:
+            FWHM_fin = np.divide(wave,R_fin)
+        except:
+            pass #print('Using FWHM_fin provided', end='\r')
+
+    measurements = []
+    head_measurements = []
+    # maybe there is a better way to not use this if-else for the error
+    # but i cannot fugure it out now...   
+    if error is not None:
+        try:
+            sigma = np.sqrt(np.power(FWHM_fin,2)-np.power(FWHM_ini,2))/2.355
+            sigma = np.nan_to_num(sigma) #turn negative values to zero
+            sigma = sigma.clip(0.01) # add a really small number instead of zero (code crashed otherwise)
+            flux_new = varsmooth(x = wave, y = flux, sig_x = sigma)
+            error_new = varsmooth_error(x = wave, error=error, sig_x = sigma) #one needs to convolve the variance with the square of the kernel
+            print('Convolution successfull from', FWHM_ini, 'to', FWHM_fin)
+            old_flux = np.copy(flux) #just to have the option to plot.
+            old_error = np.copy(error) #just to have the option to plot.
+            flux = flux_new
+            error = error_new
+        except:
+            print('Convolution not performed. Check FWHM ini and fin: ',FWHM_ini, FWHM_fin)
+        
+        if simulate is not None:
+            error[np.where(error <= 0)] = 1e-20
+            sim_flux=np.random.normal(flux,error, size=(simulate, len(flux)))
+            print(simulate,'spectra were created')
+        
+        for line in idx_definitions:
+            try:
+                (cont_l,cont_f,line_l,line_f)=GetConts(wave,flux,line['defs'],line['conts'])
+                ax = None
+                name_fig = None
                 
-#            print lineID[0], EW, eEW, SN
-            LIDs.append(lineID[0])
-            Computations_EW=np.append(Computations_EW,EW)
-            Computations_eEW=np.append(Computations_eEW,eEW)
-            Computations_SN=np.append(Computations_SN,SN)
-            Computations_Flux=np.append(Computations_Flux,Flux)
-
-    ###################################################################################
-    #                                                                                 #
-    #                                                                                 #
-    #                                      Plots                                      #
-    #                                                                                 #
-    #                                                                                 #
-    ###################################################################################
-            if Doplots:
-                    if (os.path.exists('Pacce_Figures')==False): 
-                        os.mkdir('Pacce_Figures')
-
-                    mpl.rcParams['axes.labelsize']= 10
-                    mpl.rcParams['legend.fontsize']= 10
-                    mpl.rcParams['xtick.major.size']= 8
-                    mpl.rcParams['xtick.minor.size']= 4
-                    mpl.rcParams['ytick.major.size']= 8
-                    mpl.rcParams['ytick.minor.size']= 4
-                    mpl.rcParams['xtick.labelsize']=10
-                    mpl.rcParams['ytick.labelsize']= 10
-                    if (graph <= 6):
-                        if graph ==0:
-                            fig=plt.figure(figsize=(7.9,8.5))
-                        graph=graph+1
-                        ax=plt.subplot(3,2,graph)
-                        plt.subplots_adjust(left=None, bottom=None, right=None, top=None, wspace=None, hspace=0.6)
-                        # Observed spectrum
-                        l_obsLine=l_obs[(l_obs >= contBandPass[0]) & (l_obs <=contBandPass[-1])]
-                        f_obsLine=f_obs[(l_obs >= contBandPass[0]) & (l_obs <=contBandPass[-1])]
-                        plt.plot(l_obsLine,f_obsLine,color='blue') #,label='Spectrum')
-                        # line and line limits
-                        ax.plot(line_l,line_f,color='red', label=str(lineID[0]))
-                        ax.axvline(linelims[0],0,1,color='red',ls='--')
-                        ax.axvline(linelims[1],0,1,color='red',ls='--')#,label='limits')
-                        setp(ax.get_xticklabels(), visible=True, rotation=60)
-                        # Continuum points
-                        ax.plot(cont_l,cont_f,'ro')#,label='Cont. Points')
-                        cont_ajust=np.arange(cont_l[0],cont_l[-1],0.01)
-                        ajust=cont_ajust*a + b
-                        ax.plot(cont_ajust,ajust,color='black',ls=':', label='Cont.') #label='Cont '+str(lineID[0])
-                        ax.set_xlabel('$\lambda$')
-                        ax.legend(frameon=False,prop={'size':8})
-                        #text(0.5, 0.5,str(FLine/FCont), horizontalalignment='center',verticalalignment='center',transform=ax.transAxes,color='red')
-                        if EW == -999:
-                            text(0.5, 0.5,'NOT USED', horizontalalignment='center',verticalalignment='center',transform=ax.transAxes,color='red')
-                    if graph == 6:
-                        outname=os.path.splitext(galname)[0]
-                        #print outname 
-                        title=outname
-                        fig.suptitle(title, fontsize=16)
-                        savefig('./Pacce_Figures/'+outname+'_'+str(fignumber)+'.png')
-                        fignumber=fignumber+1
-                        graph=0
-                        clf()
-                       # try:
-                       #    ax.close()
-                       # except:
-                       #    fig.delaxes(ax)
+                if path is not None:
+                    fig, ax = plt.subplots()
+                    fig.set_size_inches((5, 5))
+                    if (FWHM_ini and FWHM_fin) is not None:
+                        ax.plot(wave[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))],
+                                    old_flux[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))],
+                                    color='silver')
+                    ax.errorbar(wave[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))],
+                                flux[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))], 
+                                yerr = error[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))],
+                                fmt='k', elinewidth=1)
+                    ax.axvspan(line['conts'][0],line['conts'][1], color='blue', alpha=0.5)
+                    ax.axvspan(line['conts'][2],line['conts'][3], color='red', alpha=0.5)
+                    vmin = np.min(flux[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))])
+                    vmax = np.max(flux[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))])
+                    ax.set_ylim(vmin-0.1*(vmax-vmin),vmax+0.1*(vmax-vmin))
+                    ax.vlines(line['defs'], vmin-0.1*(vmax-vmin), vmax+0.1*(vmax-vmin),
+                              linestyle='dashed', color='black')
+                    name_fig=path+'/'+line['name']+'.png'
+                    if line['defs'][0] == line['defs'][1]:
+                        ax.hlines(cont_f[0], line['conts'][0], line['conts'][1], color='blue')
+                        ax.hlines(cont_f[1], line['conts'][2], line['conts'][3], color='red')
                     else:
-                       outname=os.path.splitext(galname)[0]
-                       
-                       title=outname
-                       fig.suptitle(title, fontsize=16)
-                       savefig('./Pacce_Figures/'+outname+'_'+str(fignumber)+'.png')
-                
-    Computations=np.column_stack((Computations_EW,Computations_eEW,Computations_Flux,Computations_SN))
-    return LIDs, Computations
+                        (a,b) = np.polyfit(cont_l,cont_f,deg=1)
+                        cont = lambda x : x*a+b 
+                        #ax.plot(cont_l, cont_f, 'ko', markersize=1)
+                        ax.plot(line_l, line_f, 'ko', markersize=1)
+                        ax.plot([np.min(line['conts']),np.max(line['conts'])],
+                                 [cont(np.min(line['conts'])),cont(np.max(line['conts']))], 'g-')
+                    ax.set_xlim(np.min(line['conts'])-1, np.max(line['conts'])+1)
+                    ax.set_xlabel(r'$\lambda$')
+                    ax.set_ylabel(r'Flux')
+                    fig.tight_layout()
+                    fig.savefig(name_fig, format='png')
+                    plt.close(fig)
 
+                if line['defs'][0] == line['defs'][1]:
+                    EW = computeBREAK(red_l=cont_l[1],red_f=cont_f[1],blue_l=cont_l[0],blue_f=cont_f[0]) 
+                    if simulate is not None:
+                        eEW=[]
+                        for i in range(simulate):
+                            (cont_l,cont_f,line_l,line_f)=GetConts(wave,sim_flux[i,:],line['defs'],line['conts'])
+                            eEW.append(computeBREAK(red_l=cont_l[1],red_f=cont_f[1],blue_l=cont_l[0],blue_f=cont_f[0]))
+                        eEW = np.std(eEW)
+                    else:
+                        (cont_l,err_cont,line_l,err_f)=GetConts(wave,error,line['defs'],line['conts'])
+                        eEW = EW * np.sqrt((err_f[0]/cont_f[0])**2+(err_f[1]/cont_f[1])**2) #this may need to change to account for the covariance
+                else:
+                    EW = computeEW(cont_l,cont_f,line_l,line_f)
+                    if simulate is not None:
+                        eEW=[]
+                        for i in range(simulate):
+                            (cont_l,cont_f,line_l,line_f)=GetConts(wave,sim_flux[i,:],line['defs'],line['conts'])
+                            eEW.append(computeEW(cont_l,cont_f,line_l,line_f))
+                        eEW = np.std(eEW)
+                    else:
+                        (cont_l,err_cont,line_l,err_f)=GetConts(wave,error,line['defs'],line['conts'])
+                        S=line_f
+                        N=err_f
+                        SN=np.mean(np.divide(S,N))
+                        dl = line_l[-1]-line_l[0]
+                        eEW = np.sqrt((2*dl-EW)*(dl-EW))/SN
+                        # error bar estimation based on https://arxiv.org/pdf/astro-ph/0606341.pdf
+                        #changed their equation (7) to depend only on EQW, d_LAMBDA and the S/N
+                
+                
+                measurements.append(EW)
+                head_measurements.append(line['name'])
+                measurements.append(eEW)
+                head_measurements.append('e_'+line['name'])
+            except:
+                measurements.append(np.nan)
+                head_measurements.append(line['name'])
+                measurements.append(np.nan)
+                head_measurements.append('e_'+line['name'])
+    else:
+        
+        try:
+            sigma = np.sqrt(np.power(FWHM_fin,2)-np.power(FWHM_ini,2))/2.355
+            sigma = np.nan_to_num(sigma) #turn negative values to zero
+            sigma = sigma.clip(0.01) # add a really small number instead of zero (code crashed otherwise)
+            old_flux = np.copy(flux)
+            flux = varsmooth(x = wave, y = flux, sig_x = sigma)
+
+            print('Convolution successfull from', FWHM_ini, 'to', FWHM_fin)
+        except:
+            print('Convolution not performed. Check FWHM ini and fin: ',FWHM_ini, FWHM_fin)
+
+        for line in idx_definitions:
+            try:
+                (cont_l,cont_f,line_l,line_f)=GetConts(wave,flux,line['defs'],line['conts'])
+                
+                if path is not None:
+                    fig, ax = plt.subplots()
+                    fig.set_size_inches((5, 5))
+                    if (FWHM_ini and FWHM_fin) is not None:
+                        ax.plot(wave[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))],
+                                old_flux[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))], 'k-')
+
+                    ax.plot(wave[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))],
+                            flux[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))], 'k-')
+                    ax.axvspan(line['conts'][0],line['conts'][1], color='blue', alpha=0.5)
+                    ax.axvspan(line['conts'][2],line['conts'][3], color='red', alpha=0.5)
+                    vmin = np.min(flux[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))])
+                    vmax = np.max(flux[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))])
+                    ax.set_ylim(vmin-0.1*(vmax-vmin),vmax+0.1*(vmax-vmin))
+                    ax.vlines(line['defs'], vmin-0.1*(vmax-vmin), vmax+0.1*(vmax-vmin),
+                              linestyle='dashed', color='black')
+                    vmin = np.min(np.append(cont_l,line_l))
+                    vmax = np.max(np.append(cont_l,line_l))
+                    ax.set_xlim(vmin-1,vmax+1)
+                    name_fig=path+'/'+line['name']+'.png'
+                    if line['defs'][0] == line['defs'][1]:
+                        ax.hlines(cont_f[0], line['conts'][0], line['conts'][1], color='blue')
+                        ax.hlines(cont_f[1], line['conts'][2], line['conts'][3], color='red')
+                    else:
+                        (a,b) = np.polyfit(cont_l,cont_f,deg=1)
+                        cont = lambda x : x*a+b 
+                        #ax.plot(cont_l, cont_f, 'ko', markersize=1)
+                        ax.plot(line_l, line_f, 'ko', markersize=2)
+                        ax.plot([np.min(line['conts']),np.max(line['conts'])],
+                                 [cont(np.min(line['conts'])),cont(np.max(line['conts']))], 'g-')
+                    ax.set_xlim(np.min(line['conts'])-1, np.max(line['conts'])+1)
+                    ax.set_xlabel(r'$\lambda$')
+                    ax.set_ylabel(r'Flux')
+                    fig.tight_layout()
+                    fig.savefig(name_fig, format='png')
+                    plt.close(fig)
+                
+                if line['defs'][0] == line['defs'][1]:
+                    EW = computeBREAK(red_l=cont_l[1],red_f=cont_f[1],blue_l=cont_l[0],blue_f=cont_f[0]) 
+                else:
+                    EW = computeEW(cont_l,cont_f,line_l,line_f)
+                eEW = np.nan
+                measurements.append(EW)
+                head_measurements.append(line['name'])
+                measurements.append(eEW)
+                head_measurements.append('e_'+line['name'])
+            
+            except:
+                measurements.append(np.nan)
+                head_measurements.append(line['name'])
+                measurements.append(np.nan)
+                head_measurements.append('e_'+line['name'])
+
+    return head_measurements, measurements
