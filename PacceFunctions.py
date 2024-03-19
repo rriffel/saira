@@ -19,10 +19,12 @@ def read_idx_defs(ref_table):
     file = np.genfromtxt(ref_table, dtype=object, delimiter='|') # loading table
     
     names = np.array([re.findall(r'\S+', t)[0] for t in file[:,0].astype(str)]) # converting the names extracted to the iddices names
-    defs = np.array([np.array(re.findall(r'\d+\.\d+', t), dtype='<f8') for t in file[:,1].astype(str)]) # geting the feature definition (always two values)
-    conts = [np.array(re.findall(r'\d+\.\d+', t), dtype='<f8') for t in file[:,2].astype(str)]# getting the continuum bands (any even number of values)
-    refs = np.array([re.findall(r'\S+', t)[0] for t in file[:,3].astype(str)]) #getting the refs
-
+    defs = np.array([np.array(re.findall(r"(?:\d*\.*\d+)", t), dtype='<f8') for t in file[:,1].astype(str)]) # geting the feature definition (always two values)
+    conts = [np.array(re.findall(r"(?:\d*\.*\d+)", t), dtype='<f8') for t in file[:,2].astype(str)]# getting the continuum bands (any even number of values)
+    try:
+        refs = np.array([re.findall(r'\S+', t)[0] for t in file[:,3].astype(str)]) #getting the refs
+    except:
+        refs = np.full(len(names), "not defined")
 
     idx_definitions = np.empty(len(file), dtype=[('name', names.dtype.str),('defs', defs.dtype.str, (2,)),('conts', 'O'), ('ref', refs.dtype.str)])
 
@@ -310,7 +312,7 @@ def eqw(wave,
                 if path is not None:
                     fig, ax = plt.subplots()
                     fig.set_size_inches((5, 5))
-                    if (FWHM_ini and FWHM_fin) is not None:
+                    if (np.append(FWHM_ini,FWHM_fin) != None).all():
                         ax.plot(wave[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))],
                                     old_flux[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))],
                                     color='silver')
@@ -402,7 +404,7 @@ def eqw(wave,
                 if path is not None:
                     fig, ax = plt.subplots()
                     fig.set_size_inches((5, 5))
-                    if (FWHM_ini and FWHM_fin) is not None:
+                    if (np.append(FWHM_ini,FWHM_fin) != None).all():
                         ax.plot(wave[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))],
                                 old_flux[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))], 'k-')
 
