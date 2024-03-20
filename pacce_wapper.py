@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import sys
 
-from PacceFunctions import *
+from PacceFunctions_new import *
 
 def pacce(filename,
           path_to_files,
