@@ -104,7 +104,7 @@ def computeEW(cont_l,cont_f,line_l,line_f):
     ratio = 1 - np.divide(line_f, cont(line_l))
 
     EW = integrate.trapezoid(ratio, line_l)
-
+        
     return EW
 
 def computeBREAK(red_l,red_f,blue_l,blue_f, ax=None, name_fig=None):
