@@ -21,10 +21,12 @@ def read_idx_defs(ref_table):
     names = np.array([re.findall(r'\S+', t)[0] for t in file[:,0].astype(str)]) # converting the names extracted to the iddices names
     defs = np.array([np.array(re.findall(r"(?:\d*\.*\d+)", t), dtype='<f8') for t in file[:,1].astype(str)]) # geting the feature definition (always two values)
     conts = [np.array(re.findall(r"(?:\d*\.*\d+)", t), dtype='<f8') for t in file[:,2].astype(str)]# getting the continuum bands (any even number of values)
-    try:
-        refs = np.array([re.findall(r'\S+', t)[0] for t in file[:,3].astype(str)]) #getting the refs
+    try: 
+        refs = np.array([re.findall(r'\S+', t)[0] for t in file[:,3].astype(str)]) #getting the refs if in the file
     except:
-        refs = np.full(len(names), "not defined")
+        refs = np.full(len(names), "not defined",type=str)
+        print(refs)
+
 
     idx_definitions = np.empty(len(file), dtype=[('name', names.dtype.str),('defs', defs.dtype.str, (2,)),('conts', 'O'), ('ref', refs.dtype.str)])
 
