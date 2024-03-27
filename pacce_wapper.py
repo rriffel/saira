@@ -20,7 +20,9 @@ def pacce(filename,
           simulate=None,
           A_to_mag = None,
           compute_idx = None,
-          print_log = None):
+          print_log = None,
+          singlePlot = None
+          ):
     
     '''
      This function computs EW of emission/absorption lines from an input file and an input spectrum. 
@@ -99,7 +101,7 @@ def pacce(filename,
         path=None #path that lead to the folder for the figures
         if path_plots is not None:
             path = os.path.join(path_plots,'indices_'+file)
-            print('Images saved in '+path)
+            print('Plots saved in '+path)
             if not os.path.isdir(path):
                 os.mkdir(path)
         
@@ -109,7 +111,7 @@ def pacce(filename,
                                             sigma_ini = file_table.loc[file]['sigma'],
                                             FWHM_fin = FWHM_fin,
                                             FWHM_ini = file_table.loc[file]['FWHM'], R_fin=R_fin,
-                                            R_ini=R_ini, z = file_table.loc[file]['z'], path=path)
+                                            R_ini=R_ini, z = file_table.loc[file]['z'], path=path,singlePlot=singlePlot)
         data_table.loc[file] = pd.Series(measurements, index=head_measurements)
     
     # cleaning table from columns that are all np.nan
