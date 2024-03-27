@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import sys
 
-from PacceFunctions_new import *
+from PacceFunctionsDev import *
 
 def pacce(filename,
           path_to_files,
@@ -96,11 +96,12 @@ def pacce(filename,
             error = None
             print('Doing file '+file)
         
-        path=None #path that lead to the folder for hte figures
+        path=None #path that lead to the folder for the figures
         if path_plots is not None:
             path = os.path.join(path_plots,'indices_'+file)
             print('Images saved in '+path)
-            os.mkdir(path)
+            if not os.path.isdir(path):
+                os.mkdir(path)
         
         #actual code runs
         head_measurements, measurements = eqw(wave=wave, flux=flux, idx_definitions=idx_definitions,

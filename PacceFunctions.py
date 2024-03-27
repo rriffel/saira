@@ -335,12 +335,13 @@ def eqw(wave,
                         (a,b) = np.polyfit(cont_l,cont_f,deg=1)
                         cont = lambda x : x*a+b 
                         #ax.plot(cont_l, cont_f, 'ko', markersize=1)
-                        ax.plot(line_l, line_f, 'ko', markersize=1)
+                        ax.plot(line_l, line_f,marker='o',color='purple', markersize=2)
                         ax.plot([np.min(line['conts']),np.max(line['conts'])],
                                  [cont(np.min(line['conts'])),cont(np.max(line['conts']))], 'g-')
                     ax.set_xlim(np.min(line['conts'])-1, np.max(line['conts'])+1)
                     ax.set_xlabel(r'$\lambda$')
                     ax.set_ylabel(r'Flux')
+                    ax.set_title(line['name'])
                     fig.tight_layout()
                     fig.savefig(name_fig, format='png')
                     plt.close(fig)
@@ -428,12 +429,13 @@ def eqw(wave,
                         (a,b) = np.polyfit(cont_l,cont_f,deg=1)
                         cont = lambda x : x*a+b 
                         #ax.plot(cont_l, cont_f, 'ko', markersize=1)
-                        ax.plot(line_l, line_f, 'ko', markersize=2)
+                        ax.plot(line_l, line_f,marker='o',color='purple', markersize=2)
                         ax.plot([np.min(line['conts']),np.max(line['conts'])],
                                  [cont(np.min(line['conts'])),cont(np.max(line['conts']))], 'g-')
                     ax.set_xlim(np.min(line['conts'])-1, np.max(line['conts'])+1)
                     ax.set_xlabel(r'$\lambda$')
                     ax.set_ylabel(r'Flux')
+                    ax.set_title(line['name'])
                     fig.tight_layout()
                     fig.savefig(name_fig, format='png')
                     plt.close(fig)
