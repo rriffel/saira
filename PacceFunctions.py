@@ -478,7 +478,7 @@ def eqw(wave,
                         (cont_l,err_cont,line_l,err_f)=GetConts(wave,error,line['defs'],line['conts'])
                         eEW = EW * np.sqrt((err_f[0]/cont_f[0])**2+(err_f[1]/cont_f[1])**2) #this may need to change to account for the covariance
                 else:
-                    EW = computeEW(cont_l,cont_f,line_l,line_f)
+                    EW = computeEW(cont_l,cont_f,line_l,line_f) # No caso do simulate a EW deveria ser amedia e o erro o std....############NOTA#############
                     if simulate is not None:
                         eEW=[]
                         for i in range(simulate):
@@ -486,7 +486,7 @@ def eqw(wave,
                             eEW.append(computeEW(cont_l,cont_f,line_l,line_f))
                         eEW = np.std(eEW)
                     else:
-                        (cont_l,err_cont,line_l,err_f)=GetConts(wave,error,line['defs'],line['conts'])
+                        (cont_l,err_cont,line_l,err_f)=GetConts(wave,error,line['defs'],line['conts']) # Parece nao estar funcionando ######################NOTA #########################
                         S=line_f
                         N=err_f
                         SN=np.mean(np.divide(S,N))
