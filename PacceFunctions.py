@@ -104,7 +104,7 @@ def computeEW(cont_l,cont_f,line_l,line_f):
     ratio = 1 - np.divide(line_f, cont(line_l))
 
     EW = integrate.trapezoid(ratio, line_l)
-
+        
     return EW
 
 def computeBREAK(red_l,red_f,blue_l,blue_f, ax=None, name_fig=None):
@@ -206,6 +206,116 @@ def varsmooth_error(x, error, sig_x, xout=None, oversample=1):
 
 # Credit: PPXF, Cappellari
 
+def plotInd(line,
+            path,
+            wave,
+            flux,
+            FWHM_ini,
+            FWHM_fin,
+            cont_l,
+            cont_f,
+            line_l,
+            line_f,
+            ):
+    name_fig=path+'/'+line['name']+'.png'
+  
+    fig, ax = plt.subplots()
+    fig.set_size_inches((5, 5))
+    if (np.append(FWHM_ini,FWHM_fin) != None).all():
+        ax.plot(wave[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))],
+                old_flux[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))], 'k-')
+
+    ax.plot(wave[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))],
+            flux[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))], 'k-')
+    ax.axvspan(line['conts'][0],line['conts'][1], color='blue', alpha=0.5)
+    ax.axvspan(line['conts'][2],line['conts'][3], color='red', alpha=0.5)
+    vmin = np.min(flux[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))])
+    vmax = np.max(flux[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))])
+    ax.set_ylim(vmin-0.1*(vmax-vmin),vmax+0.1*(vmax-vmin))
+    ax.vlines(line['defs'], vmin-0.1*(vmax-vmin), vmax+0.1*(vmax-vmin),
+                linestyle='dashed', color='black')
+    vmin = np.min(np.append(cont_l,line_l))
+    vmax = np.max(np.append(cont_l,line_l))
+    ax.set_xlim(vmin-1,vmax+1)
+    
+   
+    if line['defs'][0] == line['defs'][1]:
+        ax.hlines(cont_f[0], line['conts'][0], line['conts'][1], color='blue')
+        ax.hlines(cont_f[1], line['conts'][2], line['conts'][3], color='red')
+    else:
+        (a,b) = np.polyfit(cont_l,cont_f,deg=1)
+        cont = lambda x : x*a+b 
+        #ax.plot(cont_l, cont_f, 'ko', markersize=1)
+        ax.plot(line_l, line_f,marker='o',color='purple', markersize=2)
+        ax.plot([np.min(line['conts']),np.max(line['conts'])],
+                    [cont(np.min(line['conts'])),cont(np.max(line['conts']))], 'g-')
+    ax.set_xlim(np.min(line['conts'])-1, np.max(line['conts'])+1)
+    ax.set_xlabel(r'$\lambda$')
+    ax.set_ylabel(r'Flux')
+    ax.set_title(line['name'])
+    fig.tight_layout()
+    fig.savefig(name_fig, format='png')
+    plt.close(fig)
+
+
+
+def plotIndSingle(line,
+            path,
+            wave,
+            flux,
+            FWHM_ini,
+            FWHM_fin,
+            cont_l,
+            cont_f,
+            line_l,
+            line_f,
+            name_fig,
+            ax,
+            fig,
+            lastplot
+            ):
+    name_fig=path+'/'+name_fig+'.png'
+    if (np.append(FWHM_ini,FWHM_fin) != None).all():
+        ax.plot(wave[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))],
+                old_flux[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))], 'k-')
+
+    ax.plot(wave[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))],
+            flux[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))], 'k-')
+    ax.axvspan(line['conts'][0],line['conts'][1], color='blue', alpha=0.5)
+    ax.axvspan(line['conts'][2],line['conts'][3], color='red', alpha=0.5)
+    vmin = np.min(flux[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))])
+    vmax = np.max(flux[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))])
+    ax.set_ylim(vmin-0.1*(vmax-vmin),vmax+0.1*(vmax-vmin))
+    ax.vlines(line['defs'], vmin-0.1*(vmax-vmin), vmax+0.1*(vmax-vmin),
+                linestyle='dashed', color='black')
+    vmin = np.min(np.append(cont_l,line_l))
+    vmax = np.max(np.append(cont_l,line_l))
+    ax.set_xlim(vmin-1,vmax+1)
+    
+   
+    if line['defs'][0] == line['defs'][1]:
+        ax.hlines(cont_f[0], line['conts'][0], line['conts'][1], color='blue')
+        ax.hlines(cont_f[1], line['conts'][2], line['conts'][3], color='red')
+    else:
+        (a,b) = np.polyfit(cont_l,cont_f,deg=1)
+        cont = lambda x : x*a+b 
+        #ax.plot(cont_l, cont_f, 'ko', markersize=1)
+        ax.plot(line_l, line_f,marker='o',color='purple', markersize=2)
+        ax.plot([np.min(line['conts']),np.max(line['conts'])],
+                    [cont(np.min(line['conts'])),cont(np.max(line['conts']))], 'g-')
+    ax.set_xlim(np.min(line['conts'])-1, np.max(line['conts'])+1)
+    ax.set_xlabel(r'$\lambda$')
+    ax.set_ylabel(r'Flux')
+    ax.set_title(line['name'])
+    if lastplot:
+        print('\n',50*'*','\n',name_fig,'With all plots saved' ,'\n')
+        fig.tight_layout()
+        fig.savefig(name_fig, format='png')
+        plt.close(fig)
+
+
+
+
 def eqw(wave, 
         flux,
         idx_definitions,
@@ -218,7 +328,9 @@ def eqw(wave,
         R_fin=None,
         R_ini=None,
         z=None,
-        path=None):
+        path=None,
+        singlePlot=None
+        ):
     
     # Function that gets the spectra, tweeks it in a way given by the user and calls the functions to make the calculation of the EW
     #
@@ -237,10 +349,19 @@ def eqw(wave,
 
     #check if the code is getting already the output from read_idx_defs of if its the file definition.
 
+    # Creating a single plot (if required)
+
     try:
         tmp = idx_definitions.dtype
     except AttributeError:
         idx_definitions = read_idx_defs(idx_definitions)
+
+    if singlePlot is not None:
+        num_cols = 4 # fixed 4 columns
+        num_plots=len(idx_definitions) 
+        num_rows = (num_plots + num_cols - 1) // num_cols  # Calculate number of rows 
+        fig, axes = plt.subplots(num_rows, num_cols, figsize=(15, 5*num_rows)) 
+
 
     #redshift correction
     if z is not None:
@@ -303,47 +424,47 @@ def eqw(wave,
             sim_flux=np.random.normal(flux,error, size=(simulate, len(flux)))
             print(simulate,'spectra were created')
         
+         
+        plt_pos=0
         for line in idx_definitions:
+        
             try:
                 (cont_l,cont_f,line_l,line_f)=GetConts(wave,flux,line['defs'],line['conts'])
                 ax = None
                 name_fig = None
-                
+                # this is to do the plots
                 if path is not None:
-                    fig, ax = plt.subplots()
-                    fig.set_size_inches((5, 5))
-                    if (np.append(FWHM_ini,FWHM_fin) != None).all():
-                        ax.plot(wave[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))],
-                                    old_flux[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))],
-                                    color='silver')
-                    ax.errorbar(wave[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))],
-                                flux[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))], 
-                                yerr = error[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))],
-                                fmt='k', elinewidth=1)
-                    ax.axvspan(line['conts'][0],line['conts'][1], color='blue', alpha=0.5)
-                    ax.axvspan(line['conts'][2],line['conts'][3], color='red', alpha=0.5)
-                    vmin = np.min(flux[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))])
-                    vmax = np.max(flux[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))])
-                    ax.set_ylim(vmin-0.1*(vmax-vmin),vmax+0.1*(vmax-vmin))
-                    ax.vlines(line['defs'], vmin-0.1*(vmax-vmin), vmax+0.1*(vmax-vmin),
-                              linestyle='dashed', color='black')
-                    name_fig=path+'/'+line['name']+'.png'
-                    if line['defs'][0] == line['defs'][1]:
-                        ax.hlines(cont_f[0], line['conts'][0], line['conts'][1], color='blue')
-                        ax.hlines(cont_f[1], line['conts'][2], line['conts'][3], color='red')
-                    else:
-                        (a,b) = np.polyfit(cont_l,cont_f,deg=1)
-                        cont = lambda x : x*a+b 
-                        #ax.plot(cont_l, cont_f, 'ko', markersize=1)
-                        ax.plot(line_l, line_f, 'ko', markersize=1)
-                        ax.plot([np.min(line['conts']),np.max(line['conts'])],
-                                 [cont(np.min(line['conts'])),cont(np.max(line['conts']))], 'g-')
-                    ax.set_xlim(np.min(line['conts'])-1, np.max(line['conts'])+1)
-                    ax.set_xlabel(r'$\lambda$')
-                    ax.set_ylabel(r'Flux')
-                    fig.tight_layout()
-                    fig.savefig(name_fig, format='png')
-                    plt.close(fig)
+                    if singlePlot is not None:
+                        if num_plots-1 == plt_pos: lastplot=True
+                        if num_plots-1 != plt_pos: lastplot=False
+                        plotIndSingle(line=line,
+                        path=path,
+                        wave=wave,
+                        flux=flux,
+                        FWHM_ini=FWHM_ini,
+                        FWHM_fin=FWHM_fin,
+                        cont_l=cont_l,
+                        cont_f=cont_f,
+                        line_l=line_l,
+                        line_f=line_f,
+                        name_fig=singlePlot,
+                        ax=axes.flatten()[plt_pos],
+                        fig=fig,
+                        lastplot=lastplot
+                        )
+                        plt_pos += 1
+                    plotInd(line=line,
+                    path=path,
+                    wave=wave,
+                    flux=flux,
+                    FWHM_ini=FWHM_ini,
+                    FWHM_fin=FWHM_fin,
+                    cont_l=cont_l,
+                    cont_f=cont_f,
+                    line_l=line_l,
+                    line_f=line_f
+                    )
+
 
                 if line['defs'][0] == line['defs'][1]:
                     EW = computeBREAK(red_l=cont_l[1],red_f=cont_f[1],blue_l=cont_l[0],blue_f=cont_f[0]) 
@@ -357,7 +478,7 @@ def eqw(wave,
                         (cont_l,err_cont,line_l,err_f)=GetConts(wave,error,line['defs'],line['conts'])
                         eEW = EW * np.sqrt((err_f[0]/cont_f[0])**2+(err_f[1]/cont_f[1])**2) #this may need to change to account for the covariance
                 else:
-                    EW = computeEW(cont_l,cont_f,line_l,line_f)
+                    EW = computeEW(cont_l,cont_f,line_l,line_f) # No caso do simulate a EW deveria ser amedia e o erro o std....############NOTA#############
                     if simulate is not None:
                         eEW=[]
                         for i in range(simulate):
@@ -365,7 +486,7 @@ def eqw(wave,
                             eEW.append(computeEW(cont_l,cont_f,line_l,line_f))
                         eEW = np.std(eEW)
                     else:
-                        (cont_l,err_cont,line_l,err_f)=GetConts(wave,error,line['defs'],line['conts'])
+                        (cont_l,err_cont,line_l,err_f)=GetConts(wave,error,line['defs'],line['conts']) # Parece nao estar funcionando ######################NOTA #########################
                         S=line_f
                         N=err_f
                         SN=np.mean(np.divide(S,N))
@@ -396,47 +517,44 @@ def eqw(wave,
             print('Convolution successfull from', FWHM_ini, 'to', FWHM_fin)
         except:
             print('Convolution not performed. Check FWHM ini and fin: ',FWHM_ini, FWHM_fin)
-
+        plt_pos=0
         for line in idx_definitions:
+           
             try:
                 (cont_l,cont_f,line_l,line_f)=GetConts(wave,flux,line['defs'],line['conts'])
-                
+                # this is to do the plots
                 if path is not None:
-                    fig, ax = plt.subplots()
-                    fig.set_size_inches((5, 5))
-                    if (np.append(FWHM_ini,FWHM_fin) != None).all():
-                        ax.plot(wave[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))],
-                                old_flux[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))], 'k-')
+                    if singlePlot is not None:
+                        if num_plots-1 == plt_pos: lastplot=True
+                        if num_plots-1 != plt_pos: lastplot=False
+                        plotIndSingle(line=line,
+                        path=path,
+                        wave=wave,
+                        flux=flux,
+                        FWHM_ini=FWHM_ini,
+                        FWHM_fin=FWHM_fin,
+                        cont_l=cont_l,
+                        cont_f=cont_f,
+                        line_l=line_l,
+                        line_f=line_f,
+                        name_fig=singlePlot,
+                        ax=axes.flatten()[plt_pos],
+                        fig=fig,
+                        lastplot=lastplot
+                        )
+                        plt_pos += 1
+                    plotInd(line=line,
+                    path=path,
+                    wave=wave,
+                    flux=flux,
+                    FWHM_ini=FWHM_ini,
+                    FWHM_fin=FWHM_fin,
+                    cont_l=cont_l,
+                    cont_f=cont_f,
+                    line_l=line_l,
+                    line_f=line_f
+                    )
 
-                    ax.plot(wave[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))],
-                            flux[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))], 'k-')
-                    ax.axvspan(line['conts'][0],line['conts'][1], color='blue', alpha=0.5)
-                    ax.axvspan(line['conts'][2],line['conts'][3], color='red', alpha=0.5)
-                    vmin = np.min(flux[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))])
-                    vmax = np.max(flux[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))])
-                    ax.set_ylim(vmin-0.1*(vmax-vmin),vmax+0.1*(vmax-vmin))
-                    ax.vlines(line['defs'], vmin-0.1*(vmax-vmin), vmax+0.1*(vmax-vmin),
-                              linestyle='dashed', color='black')
-                    vmin = np.min(np.append(cont_l,line_l))
-                    vmax = np.max(np.append(cont_l,line_l))
-                    ax.set_xlim(vmin-1,vmax+1)
-                    name_fig=path+'/'+line['name']+'.png'
-                    if line['defs'][0] == line['defs'][1]:
-                        ax.hlines(cont_f[0], line['conts'][0], line['conts'][1], color='blue')
-                        ax.hlines(cont_f[1], line['conts'][2], line['conts'][3], color='red')
-                    else:
-                        (a,b) = np.polyfit(cont_l,cont_f,deg=1)
-                        cont = lambda x : x*a+b 
-                        #ax.plot(cont_l, cont_f, 'ko', markersize=1)
-                        ax.plot(line_l, line_f, 'ko', markersize=2)
-                        ax.plot([np.min(line['conts']),np.max(line['conts'])],
-                                 [cont(np.min(line['conts'])),cont(np.max(line['conts']))], 'g-')
-                    ax.set_xlim(np.min(line['conts'])-1, np.max(line['conts'])+1)
-                    ax.set_xlabel(r'$\lambda$')
-                    ax.set_ylabel(r'Flux')
-                    fig.tight_layout()
-                    fig.savefig(name_fig, format='png')
-                    plt.close(fig)
                 
                 if line['defs'][0] == line['defs'][1]:
                     EW = computeBREAK(red_l=cont_l[1],red_f=cont_f[1],blue_l=cont_l[0],blue_f=cont_f[0]) 
