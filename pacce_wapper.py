@@ -106,6 +106,7 @@ def pacce(filename,
             print('Plots saved in '+path)
             if not os.path.isdir(path):
                 os.mkdir(path)
+        pltallindices=None
         if AllIndicesPlot is not None:
             SP_path = os.path.join(allindices_plot_path,file+'/')
             
