@@ -2,6 +2,7 @@ import os
 import numpy as np
 import pandas as pd
 import sys
+from pathlib import Path
 
 from PacceFunctions import *
 
@@ -9,7 +10,7 @@ def pacce(filename,
           path_to_files,
           IndexDefs,
           output_file = 'demo.txt',
-          path_plots = None,
+          path_singleind_plots = None,
           sigma_ini = None,
           sigma_fin = None,
           FWHM_fin = None,
@@ -22,7 +23,8 @@ def pacce(filename,
           A_to_mag = None,
           compute_idx = None,
           print_log = None,
-          singlePlot = None
+          AllIndicesPlot = None,
+          allindices_plot_path = './allIndicesPlots/'
           ):
     
     '''
@@ -83,8 +85,8 @@ def pacce(filename,
     file_table.set_index('file', inplace=True)
 
     #create folde to add the figures
-    if path_plots is not None:
-        if not os.path.exists(path_plots): os.mkdir(path_plots)
+    if path_singleind_plots is not None:
+        if not os.path.exists(path_singleind_plots): os.mkdir(path_singleind_plots)
 
     #here the code starts to go throu every file, openning them and measuring the indices
     for file in file_table.index:
@@ -99,11 +101,20 @@ def pacce(filename,
             print('Doing file '+file)
         
         path=None #path that lead to the folder for the figures
-        if path_plots is not None:
-            path = os.path.join(path_plots,'indices_'+file)
+        if path_singleind_plots is not None:
+            path = os.path.join(path_singleind_plots,'indices_'+file)
             print('Plots saved in '+path)
             if not os.path.isdir(path):
                 os.mkdir(path)
+        if AllIndicesPlot is not None:
+            SP_path = os.path.join(allindices_plot_path,file+'/')
+            
+            if not os.path.isdir(SP_path):
+                path_tmp = Path(SP_path)
+                path_tmp.mkdir(parents=True)
+            pltallindices = SP_path+AllIndicesPlot
+            print('All indices plots saved in  '+pltallindices)
+
         
         #actual code runs
         head_measurements, measurements = eqw(wave=wave, flux=flux, idx_definitions=idx_definitions,
@@ -111,7 +122,7 @@ def pacce(filename,
                                             sigma_ini = file_table.loc[file]['sigma'],
                                             FWHM_fin = FWHM_fin,
                                             FWHM_ini = file_table.loc[file]['FWHM'], R_fin=R_fin,
-                                            R_ini=R_ini, z = file_table.loc[file]['z'], path=path,singlePlot=singlePlot)
+                                            R_ini=R_ini, z = file_table.loc[file]['z'], path=path,AllIndicesPlot=pltallindices)
         data_table.loc[file] = pd.Series(measurements, index=head_measurements)
     
     # cleaning table from columns that are all np.nan

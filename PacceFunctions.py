@@ -260,7 +260,6 @@ def plotInd(line,
 
 
 def plotIndSingle(line,
-            path,
             wave,
             flux,
             FWHM_ini,
@@ -274,7 +273,6 @@ def plotIndSingle(line,
             fig,
             lastplot
             ):
-    name_fig=path+'/'+name_fig+'.png'
     if (np.append(FWHM_ini,FWHM_fin) != None).all():
         ax.plot(wave[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))],
                 old_flux[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))], 'k-')
@@ -329,7 +327,7 @@ def eqw(wave,
         R_ini=None,
         z=None,
         path=None,
-        singlePlot=None
+        AllIndicesPlot=None,
         ):
     
     # Function that gets the spectra, tweeks it in a way given by the user and calls the functions to make the calculation of the EW
@@ -356,7 +354,7 @@ def eqw(wave,
     except AttributeError:
         idx_definitions = read_idx_defs(idx_definitions)
 
-    if singlePlot is not None:
+    if AllIndicesPlot is not None:
         num_cols = 4 # fixed 4 columns
         num_plots=len(idx_definitions) 
         num_rows = (num_plots + num_cols - 1) // num_cols  # Calculate number of rows 
@@ -434,25 +432,6 @@ def eqw(wave,
                 name_fig = None
                 # this is to do the plots
                 if path is not None:
-                    if singlePlot is not None:
-                        if num_plots-1 == plt_pos: lastplot=True
-                        if num_plots-1 != plt_pos: lastplot=False
-                        plotIndSingle(line=line,
-                        path=path,
-                        wave=wave,
-                        flux=flux,
-                        FWHM_ini=FWHM_ini,
-                        FWHM_fin=FWHM_fin,
-                        cont_l=cont_l,
-                        cont_f=cont_f,
-                        line_l=line_l,
-                        line_f=line_f,
-                        name_fig=singlePlot,
-                        ax=axes.flatten()[plt_pos],
-                        fig=fig,
-                        lastplot=lastplot
-                        )
-                        plt_pos += 1
                     plotInd(line=line,
                     path=path,
                     wave=wave,
@@ -464,6 +443,24 @@ def eqw(wave,
                     line_l=line_l,
                     line_f=line_f
                     )
+                if AllIndicesPlot is not None:
+                    if num_plots-1 == plt_pos: lastplot=True
+                    if num_plots-1 != plt_pos: lastplot=False
+                    plotIndSingle(line=line,
+                    wave=wave,
+                    flux=flux,
+                    FWHM_ini=FWHM_ini,
+                    FWHM_fin=FWHM_fin,
+                    cont_l=cont_l,
+                    cont_f=cont_f,
+                    line_l=line_l,
+                    line_f=line_f,
+                    name_fig=AllIndicesPlot,
+                    ax=axes.flatten()[plt_pos],
+                    fig=fig,
+                    lastplot=lastplot
+                    )
+                    plt_pos += 1
 
 
                 if line['defs'][0] == line['defs'][1]:
@@ -523,25 +520,6 @@ def eqw(wave,
                 (cont_l,cont_f,line_l,line_f)=GetConts(wave,flux,line['defs'],line['conts'])
                 # this is to do the plots
                 if path is not None:
-                    if singlePlot is not None:
-                        if num_plots-1 == plt_pos: lastplot=True
-                        if num_plots-1 != plt_pos: lastplot=False
-                        plotIndSingle(line=line,
-                        path=path,
-                        wave=wave,
-                        flux=flux,
-                        FWHM_ini=FWHM_ini,
-                        FWHM_fin=FWHM_fin,
-                        cont_l=cont_l,
-                        cont_f=cont_f,
-                        line_l=line_l,
-                        line_f=line_f,
-                        name_fig=singlePlot,
-                        ax=axes.flatten()[plt_pos],
-                        fig=fig,
-                        lastplot=lastplot
-                        )
-                        plt_pos += 1
                     plotInd(line=line,
                     path=path,
                     wave=wave,
@@ -553,6 +531,27 @@ def eqw(wave,
                     line_l=line_l,
                     line_f=line_f
                     )
+                if AllIndicesPlot is not None:
+                    if num_plots-1 == plt_pos: lastplot=True
+                    if num_plots-1 != plt_pos: lastplot=False
+                    plotIndSingle(line=line,
+                    wave=wave,
+                    flux=flux,
+                    FWHM_ini=FWHM_ini,
+                    FWHM_fin=FWHM_fin,
+                    cont_l=cont_l,
+                    cont_f=cont_f,
+                    line_l=line_l,
+                    line_f=line_f,
+                    name_fig=AllIndicesPlot,
+                    ax=axes.flatten()[plt_pos],
+                    fig=fig,
+                    lastplot=lastplot
+                    )
+                    plt_pos += 1
+
+
+
 
                 eEW = np.nan
                 if line['defs'][0] == line['defs'][1]:
