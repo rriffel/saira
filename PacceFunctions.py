@@ -404,7 +404,7 @@ def eqw(wave,
     head_measurements = []
     # maybe there is a better way to not use this if-else for the error
     # but i cannot fugure it out now...   
-    if error is not None:
+    if isinstance(error, np.ndarray): # test if the user provided an error spectrum
         try:
             sigma = np.sqrt(np.power(FWHM_fin,2)-np.power(FWHM_ini,2))/2.355
             sigma = np.nan_to_num(sigma) #turn negative values to zero
@@ -506,7 +506,6 @@ def eqw(wave,
                 measurements.append(np.nan)
                 head_measurements.append('e_'+line['name'])
     else:
-        
         try:
             sigma = np.sqrt(np.power(FWHM_fin,2)-np.power(FWHM_ini,2))/2.355
             sigma = np.nan_to_num(sigma) #turn negative values to zero
@@ -555,12 +554,32 @@ def eqw(wave,
                     line_f=line_f
                     )
 
-                
+                eEW = np.nan
                 if line['defs'][0] == line['defs'][1]:
-                    EW = computeBREAK(red_l=cont_l[1],red_f=cont_f[1],blue_l=cont_l[0],blue_f=cont_f[0]) 
+                    EW = computeBREAK(red_l=cont_l[1],red_f=cont_f[1],blue_l=cont_l[0],blue_f=cont_f[0])
+                    if error:
+                        (w_mean,s_blue,cont_wave,cont_flux) = GetConts(wave,flux,line['conts'][0:2],line['conts'][0:2])
+                        (a,b) = np.polyfit(cont_wave,cont_flux,deg=1)
+                        cont = lambda x : x*a+b
+                        err_blue = np.std(cont_flux-cont(cont_wave))
+                        (w_mean,s_red,cont_wave,cont_flux) = GetConts(wave,flux,line['conts'][2:4],line['conts'][2:4])
+                        (a,b) = np.polyfit(cont_wave,cont_flux,deg=1)
+                        cont = lambda x : x*a+b
+                        err_red = np.std(cont_flux-cont(cont_wave))
+                        eEW = EW*np.sqrt((err_blue/s_blue[0])**2+(err_red/s_red[0])**2)
+
                 else:
                     EW = computeEW(cont_l,cont_f,line_l,line_f)
-                eEW = np.nan
+                    if error:
+                        (w_mean,s_mean,cont_wave,cont_flux) = GetConts(wave,flux,line['conts'][0:2],line['conts'][0:2])
+                        (a,b) = np.polyfit(cont_wave,cont_flux,deg=1)
+                        cont = lambda x : x*a+b
+                        S = s_mean[0]
+                        N = np.std(cont_flux-cont(cont_wave))
+                        SN = S/N
+                        dl = line['defs'][1] - line['defs'][0]
+                        eEW = np.sqrt((2*dl-EW)*(dl-EW))/SN
+                
                 measurements.append(EW)
                 head_measurements.append(line['name'])
                 measurements.append(eEW)

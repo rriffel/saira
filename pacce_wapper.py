@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import sys
 
-from PacceFunctionsDev import *
+from PacceFunctions import *
 
 def pacce(filename,
           path_to_files,
@@ -18,6 +18,7 @@ def pacce(filename,
           R_ini=None,
           z = None,
           simulate=None,
+          error = None,
           A_to_mag = None,
           compute_idx = None,
           print_log = None,
@@ -95,7 +96,6 @@ def pacce(filename,
             print('Doing file '+file+' with error')
         except ValueError:
             wave, flux = np.genfromtxt(os.path.join(path_to_files,file), usecols=(0,1), unpack=True)
-            error = None
             print('Doing file '+file)
         
         path=None #path that lead to the folder for the figures
