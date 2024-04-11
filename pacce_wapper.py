@@ -10,6 +10,7 @@ def pacce(filename,
           path_to_files,
           IndexDefs,
           output_file = 'demo.txt',
+          negative_Ew_to_zero = False,
           path_singleind_plots = None,
           sigma_ini = None,
           sigma_fin = None,
@@ -103,7 +104,7 @@ def pacce(filename,
         path=None #path that lead to the folder for the figures
         if path_singleind_plots is not None:
             path = os.path.join(path_singleind_plots,'indices_'+file)
-            print('Plots saved in '+path)
+            print('Individual indices plots saved in '+path)
             if not os.path.isdir(path):
                 os.mkdir(path)
         pltallindices=None
@@ -124,12 +125,17 @@ def pacce(filename,
                                             FWHM_fin = FWHM_fin,
                                             FWHM_ini = file_table.loc[file]['FWHM'], R_fin=R_fin,
                                             R_ini=R_ini, z = file_table.loc[file]['z'], path=path,AllIndicesPlot=pltallindices)
+       
         data_table.loc[file] = pd.Series(measurements, index=head_measurements)
     
     # cleaning table from columns that are all np.nan
     print('----------------------------')
     data_table = data_table.convert_dtypes()
     float64_cols = list(data_table.select_dtypes(include='Float64'))
+    if negative_Ew_to_zero:
+        temp = data_table[float64_cols]
+        temp[temp < 0] = 0.00
+        data_table[float64_cols] = temp
     data_table[float64_cols] = data_table[float64_cols].astype(np.float64).values.tolist()
     data_table.dropna(axis=1, how='all', inplace=True)
 
