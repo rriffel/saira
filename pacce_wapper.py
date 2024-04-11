@@ -124,7 +124,10 @@ def pacce(filename,
                                             sigma_ini = file_table.loc[file]['sigma'],
                                             FWHM_fin = FWHM_fin,
                                             FWHM_ini = file_table.loc[file]['FWHM'], R_fin=R_fin,
-                                            R_ini=R_ini, z = file_table.loc[file]['z'], path=path,AllIndicesPlot=pltallindices)
+                                            R_ini=R_ini, z = file_table.loc[file]['z'], path=path,
+                                            AllIndicesPlot=pltallindices,
+                                            negative_Ew_to_zero=negative_Ew_to_zero
+                                            )
        
         data_table.loc[file] = pd.Series(measurements, index=head_measurements)
     
@@ -132,10 +135,6 @@ def pacce(filename,
     print('----------------------------')
     data_table = data_table.convert_dtypes()
     float64_cols = list(data_table.select_dtypes(include='Float64'))
-    if negative_Ew_to_zero:
-        temp = data_table[float64_cols]
-        temp[temp < 0] = 0.00
-        data_table[float64_cols] = temp
     data_table[float64_cols] = data_table[float64_cols].astype(np.float64).values.tolist()
     data_table.dropna(axis=1, how='all', inplace=True)
 
