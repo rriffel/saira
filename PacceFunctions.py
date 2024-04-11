@@ -328,6 +328,7 @@ def eqw(wave,
         z=None,
         path=None,
         AllIndicesPlot=None,
+        negative_Ew_to_zero=False,
         ):
     
     # Function that gets the spectra, tweeks it in a way given by the user and calls the functions to make the calculation of the EW
@@ -491,7 +492,11 @@ def eqw(wave,
                         eEW = np.sqrt((2*dl-EW)*(dl-EW))/SN
                         # error bar estimation based on https://arxiv.org/pdf/astro-ph/0606341.pdf
                         #changed their equation (7) to depend only on EQW, d_LAMBDA and the S/N
-                
+                if negative_Ew_to_zero:
+                    if float(EW) < 0:
+                        EW = 0.00
+                        eEW = 0.00
+
                 
                 measurements.append(EW)
                 head_measurements.append(line['name'])
@@ -578,6 +583,12 @@ def eqw(wave,
                         SN = S/N
                         dl = line['defs'][1] - line['defs'][0]
                         eEW = np.sqrt((2*dl-EW)*(dl-EW))/SN
+                if negative_Ew_to_zero:
+                    if float(EW) < 0:
+                        EW = 0.00
+                        eEW=0.00
+                
+                
                 
                 measurements.append(EW)
                 head_measurements.append(line['name'])
