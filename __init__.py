@@ -1,1 +1,1 @@
-from ./pacce_wapper import pacce
+from pacce_wapper import pacce
