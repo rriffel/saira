@@ -8,7 +8,7 @@ setup(
     name="pacce",
     version="1.00",
     packages=find_packages(),
-    author="Rogerio Riffel & Joao P. V. Benedetti",
+    author="Joao P. V. Benedetti & Rogerio Riffel",
     python_requires=">=3.10",
-    install_requires=["astropy", "pandas", "scipy"]
+    install_requires=["astropy", "pandas", "scipy", "matplotlib"]
 )
