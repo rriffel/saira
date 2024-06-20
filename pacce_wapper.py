@@ -103,7 +103,7 @@ def pacce(filename,
         
         path=None #path that lead to the folder for the figures
         if path_singleind_plots is not None:
-            path = os.path.join(path_singleind_plots,'indices_'+file)
+            path = os.path.join(path_singleind_plots,file)
             print('Individual indices plots saved in '+path)
             if not os.path.isdir(path):
                 os.mkdir(path)
