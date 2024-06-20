@@ -1,4 +1,4 @@
-##Pacce
+#Pacce
 
 PACCE is a code designed to measure indices while handling the most common corrections to
 spectra one would want to do uniformily across a data set i.e. broaden to a specific resolution,
