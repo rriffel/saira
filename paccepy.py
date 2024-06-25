@@ -10,7 +10,7 @@ from  scipy import ndimage
 import re
 import time
 
-from PacceFunctions import ComputEW as pacce
+from pacce.PacceFunctions import ComputEW as pacce
 
 formf='{:5.2F}'
 #IndexDefs=['config1','config2','config3','config']

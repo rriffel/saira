@@ -4,7 +4,7 @@ import pandas as pd
 import sys
 from pathlib import Path
 
-from PacceFunctions import *
+from pacce.PacceFunctions import *
 
 def pacce(filename,
           path_to_files,
