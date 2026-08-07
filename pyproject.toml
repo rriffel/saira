@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pacce"
+version = "1.0.0"
+description = "Python Algorithm to Compute Continuum and Equivalent widths"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    {name = "Joao P. V. Benedetti"},
+    {name = "Rogerio Riffel"},
+]
+
+dependencies = [
+    "astropy",
+    "pandas",
+    "scipy",
+    "matplotlib",
+]
+
+[project.urls]
+Homepage = "https://github.com/rriffel/pacce"
+Repository = "https://github.com/rriffel/pacce"
+
+[tool.setuptools.packages.find]
+include = ["pacce*"]
+
+[tool.setuptools.package-data]
+pacce = [
+    "suport_files/*",
+    "examples/**/*",
+]
