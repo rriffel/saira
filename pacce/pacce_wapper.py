@@ -1,15 +1,17 @@
 import os
+import sys
+import fnmatch
+from pathlib import Path
 import numpy as np
 import pandas as pd
-import sys
-from pathlib import Path
 
 from pacce.PacceFunctions import *
 
-def pacce(filename,
-          path_to_files,
-          IndexDefs,
+def pacce(filename = None,
+          path_to_files = './',
+          IndexDefs = None,
           output_file = 'demo.txt',
+          file_extension = None,
           negative_Ew_to_zero = False,
           path_singleind_plots = None,
           sigma_ini = None,
@@ -29,28 +31,46 @@ def pacce(filename,
           ):
     
     '''
-     This function computs EW of emission/absorption lines from an input file and an input spectrum. 
+     This function computes EW of emission/absorption lines from an input table or directory of spectra.
      It returns the line ID, Equivalent Width, Equivalent Width errors, Flux and line SNR.
      
+     usage: pacce(filename='spectra.dat', path_to_files='./spectra/', IndexDefs='defs.ind')
+            or
+            pacce(path_to_files='./spectra/', file_extension='.txt', IndexDefs='defs.ind')
      
-     usage: ComputEW(galname,IndexDefs,Doplots=True/False,simulate=False,SimTimes=100,treshold=0.)
-     galname: input ASCII file name
-     IndexDefs: input file with the indexes definitions
-     Doplots: True or False
-     simulate: True or False
-     SimTimes: integer with the number of simulations
-     treshold: fraction of the line continuum compared with the bandpass.
-    
+     filename: input ASCII table name with 'file' column (optional if file_extension is used)
+     path_to_files: path to directory containing spectra
+     file_extension: pattern/extension to scan in path_to_files when filename is None (e.g. '.txt', '.dat', '*.spec')
+     IndexDefs: input file with the index definitions
     '''
     #changing where you print the info. 
     term = sys.stdout
     if print_log is not None:
         sys.stdout = open(print_log, 'w')
 
-
     idx_definitions = read_idx_defs(IndexDefs) # loading idx definitions
 
-    original_input = pd.read_table(filename) # going throught all the files listed in list
+    # Determine input spectrum files: from table or directory discovery
+    if filename is not None and os.path.isfile(filename):
+        original_input = pd.read_table(filename)
+    else:
+        ext = file_extension or '.txt'
+        if not os.path.isdir(path_to_files):
+            raise FileNotFoundError(f"Spectra directory not found: {path_to_files}")
+        
+        pattern = ext if ('*' in ext or '?' in ext) else f"*{ext if ext.startswith('.') else '.' + ext}"
+        matched_files = sorted([
+            f for f in os.listdir(path_to_files)
+            if fnmatch.fnmatch(f, pattern) and os.path.isfile(os.path.join(path_to_files, f))
+        ])
+        
+        if not matched_files:
+            raise FileNotFoundError(
+                f"No spectrum files found matching '{pattern}' in directory '{path_to_files}'"
+            )
+        
+        print(f"Found {len(matched_files)} spectra matching '{pattern}' in '{path_to_files}'")
+        original_input = pd.DataFrame({'file': matched_files})
     
     file_table =  original_input.copy()
     # check if in the table there is either FWHM (A), sigma (km/s) and R (lambda/d_lambda)

@@ -97,18 +97,21 @@ QLineEdit:disabled, QDoubleSpinBox:disabled, QSpinBox:disabled {{
     color: #94A3B8;
 }}
 
-QCheckBox {{
+QCheckBox, QRadioButton {{
     color: {TEXT_COLOR};
     font-size: 13px;
     spacing: 6px;
 }}
-QCheckBox::indicator {{
+QCheckBox::indicator, QRadioButton::indicator {{
     width: 16px;
     height: 16px;
     border-radius: 3px;
     border: 1px solid {BORDER_COLOR};
 }}
-QCheckBox::indicator:checked {{
+QRadioButton::indicator {{
+    border-radius: 8px;
+}}
+QCheckBox::indicator:checked, QRadioButton::indicator:checked {{
     background-color: {ACCENT};
     border-color: {ACCENT};
 }}

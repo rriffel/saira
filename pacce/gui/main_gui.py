@@ -17,7 +17,7 @@ import pandas as pd
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QPushButton, QScrollArea, QGroupBox, QCheckBox,
+    QLabel, QPushButton, QScrollArea, QGroupBox, QCheckBox, QRadioButton,
     QTableWidget, QTableWidgetItem, QSplitter, QProgressBar,
     QFileDialog, QMessageBox, QSizePolicy, QComboBox, QSpacerItem
 )
@@ -298,6 +298,27 @@ class MainWindow(QMainWindow):
         lay = QVBoxLayout(self.grp_input)
         lay.setSpacing(10)
 
+        # Mode Selection
+        mode_row = QWidget()
+        mode_lay = QHBoxLayout(mode_row)
+        mode_lay.setContentsMargins(0, 0, 0, 0)
+        mode_lay.setSpacing(16)
+
+        mode_label = QLabel("Input Mode:")
+        mode_label.setFixedWidth(140)
+        mode_label.setStyleSheet("font-weight: 500;")
+        mode_lay.addWidget(mode_label)
+
+        self.radio_table_mode = QRadioButton("Table / File List")
+        self.radio_extension_mode = QRadioButton("Auto-discover by Extension")
+        self.radio_table_mode.setChecked(True)
+        self.radio_table_mode.toggled.connect(self._on_input_mode_changed)
+
+        mode_lay.addWidget(self.radio_table_mode)
+        mode_lay.addWidget(self.radio_extension_mode)
+        mode_lay.addStretch()
+        lay.addWidget(mode_row)
+
         self.pick_spectrum_list = FilePickerRow(
             "Spectrum List:", placeholder="ASCII table with 'file' column",
             file_filter="Data Files (*.dat *.txt *.csv);;All Files (*)"
@@ -308,7 +329,33 @@ class MainWindow(QMainWindow):
             "Spectra Directory:", placeholder="Folder containing spectra",
             is_directory=True
         )
+        self.pick_spectra_dir.line_edit.textChanged.connect(self._update_discovered_count)
         lay.addWidget(self.pick_spectra_dir)
+
+        # Extension row (visible in auto-discover mode)
+        self.ext_row = QWidget()
+        ext_lay = QHBoxLayout(self.ext_row)
+        ext_lay.setContentsMargins(0, 0, 0, 0)
+        ext_lay.setSpacing(8)
+
+        ext_label = QLabel("File Extension:")
+        ext_label.setFixedWidth(140)
+        ext_label.setStyleSheet("font-weight: 500;")
+        ext_lay.addWidget(ext_label)
+
+        self.combo_extension = QComboBox()
+        self.combo_extension.setEditable(True)
+        self.combo_extension.addItems([".txt", ".dat", ".spec", "*.txt", "*.dat", "*"])
+        self.combo_extension.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.combo_extension.currentTextChanged.connect(self._update_discovered_count)
+        ext_lay.addWidget(self.combo_extension, 1)
+
+        self.lbl_discovered_count = QLabel("")
+        self.lbl_discovered_count.setStyleSheet(f"color: {ACCENT}; font-size: 12px; font-weight: bold;")
+        ext_lay.addWidget(self.lbl_discovered_count)
+
+        lay.addWidget(self.ext_row)
+        self.ext_row.setVisible(False)
 
         # Index Definitions with combo for bundled files
         idx_row = QWidget()
@@ -343,6 +390,34 @@ class MainWindow(QMainWindow):
         lay.addWidget(self.pick_output)
 
         self.panels_layout.addWidget(self.grp_input)
+
+    def _on_input_mode_changed(self):
+        is_table = self.radio_table_mode.isChecked()
+        self.pick_spectrum_list.setVisible(is_table)
+        self.ext_row.setVisible(not is_table)
+        if not is_table:
+            self._update_discovered_count()
+
+    def _update_discovered_count(self):
+        if not hasattr(self, 'radio_extension_mode') or not self.radio_extension_mode.isChecked():
+            return
+        folder = self.pick_spectra_dir.text()
+        ext = self.combo_extension.currentText().strip()
+        if not ext:
+            ext = ".txt"
+        import fnmatch
+        pattern = ext if ('*' in ext or '?' in ext) else f"*{ext if ext.startswith('.') else '.' + ext}"
+        if folder and os.path.isdir(folder):
+            try:
+                matched = [
+                    f for f in os.listdir(folder)
+                    if fnmatch.fnmatch(f, pattern) and os.path.isfile(os.path.join(folder, f))
+                ]
+                self.lbl_discovered_count.setText(f"({len(matched)} spectra found)")
+            except Exception:
+                self.lbl_discovered_count.setText("")
+        else:
+            self.lbl_discovered_count.setText("")
 
     def _populate_idx_combo(self):
         """Add bundled .ind files from suport_files/ to the combo box."""
@@ -634,16 +709,19 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Running", "PACCE is already running.")
             return
 
-        # Validate required inputs
-        filename = self.pick_spectrum_list.text()
+        is_table_mode = self.radio_table_mode.isChecked()
+        filename = self.pick_spectrum_list.text() if is_table_mode else None
+        file_ext = self.combo_extension.currentText().strip() if not is_table_mode else None
         path_to_files = self.pick_spectra_dir.text()
         idx_idx = self.combo_idx_defs.currentIndex()
 
         errors = []
-        if not filename:
-            errors.append("Spectrum list file is required.")
+        if is_table_mode and not filename:
+            errors.append("Spectrum list file is required in Table mode.")
         if not path_to_files:
             errors.append("Spectra directory is required.")
+        elif not os.path.isdir(path_to_files):
+            errors.append(f"Spectra directory not found: {path_to_files}")
         if idx_idx < 0:
             errors.append("Index definitions file is required.")
 
@@ -664,6 +742,7 @@ class MainWindow(QMainWindow):
         kwargs = {
             "filename": filename,
             "path_to_files": path_to_files,
+            "file_extension": file_ext,
             "IndexDefs": index_defs,
             "output_file": output_file,
         }
@@ -785,6 +864,8 @@ class MainWindow(QMainWindow):
     def _gather_config(self):
         """Collect all GUI settings into a dict."""
         cfg = {}
+        cfg["input_mode"] = "table" if self.radio_table_mode.isChecked() else "extension"
+        cfg["file_extension"] = self.combo_extension.currentText()
         cfg["spectrum_list"] = self.pick_spectrum_list.text()
         cfg["spectra_dir"] = self.pick_spectra_dir.text()
         cfg["idx_defs_index"] = self.combo_idx_defs.currentIndex()
@@ -816,6 +897,13 @@ class MainWindow(QMainWindow):
 
     def _apply_config(self, cfg):
         """Restore GUI settings from a dict."""
+        mode = cfg.get("input_mode", "table")
+        if mode == "extension":
+            self.radio_extension_mode.setChecked(True)
+        else:
+            self.radio_table_mode.setChecked(True)
+
+        self.combo_extension.setCurrentText(cfg.get("file_extension", ".txt"))
         self.pick_spectrum_list.set_text(cfg.get("spectrum_list", ""))
         self.pick_spectra_dir.set_text(cfg.get("spectra_dir", ""))
         self.pick_output.set_text(cfg.get("output_file", "measurements.txt"))
