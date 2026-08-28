@@ -560,8 +560,74 @@ class MainWindow(QMainWindow):
         return bottom
 
     # -----------------------------------------------------------------
-    # Run PACCE
+    # Resolution Validation & Run PACCE
     # -----------------------------------------------------------------
+
+    def _validate_resolution_settings(self):
+        """
+        Validate that the user has not specified unphysical resolution parameters
+        (e.g., trying to convolve to a higher spectral resolution).
+        Returns None if valid, or an error description string if invalid.
+        """
+        c_kms = 299792.458
+        ref_wave = 5000.0  # reference wavelength in Angstroms for equivalence comparison
+
+        # Get initial equivalent FWHM (A)
+        fwhm_ini = None
+        desc_ini = None
+        if self.opt_fwhm_ini.is_enabled():
+            val = self.opt_fwhm_ini.value()
+            if val <= 0:
+                return "FWHM_ini must be strictly positive (> 0)."
+            fwhm_ini = val
+            desc_ini = f"FWHM_ini = {val:.2f} Å"
+        elif self.opt_sigma_ini.is_enabled():
+            val = self.opt_sigma_ini.value()
+            if val <= 0:
+                return "σ_ini must be strictly positive (> 0)."
+            fwhm_ini = (val * 2.355 / c_kms) * ref_wave
+            desc_ini = f"σ_ini = {val:.1f} km/s (≈ {fwhm_ini:.2f} Å at 5000 Å)"
+        elif self.opt_r_ini.is_enabled():
+            val = self.opt_r_ini.value()
+            if val <= 0:
+                return "R_ini must be strictly positive (> 0)."
+            fwhm_ini = ref_wave / val
+            desc_ini = f"R_ini = {val:.0f} (≈ {fwhm_ini:.2f} Å at 5000 Å)"
+
+        # Get final equivalent FWHM (A)
+        fwhm_fin = None
+        desc_fin = None
+        if self.opt_fwhm_fin.is_enabled():
+            val = self.opt_fwhm_fin.value()
+            if val <= 0:
+                return "FWHM_fin must be strictly positive (> 0)."
+            fwhm_fin = val
+            desc_fin = f"FWHM_fin = {val:.2f} Å"
+        elif self.opt_sigma_fin.is_enabled():
+            val = self.opt_sigma_fin.value()
+            if val <= 0:
+                return "σ_fin must be strictly positive (> 0)."
+            fwhm_fin = (val * 2.355 / c_kms) * ref_wave
+            desc_fin = f"σ_fin = {val:.1f} km/s (≈ {fwhm_fin:.2f} Å at 5000 Å)"
+        elif self.opt_r_fin.is_enabled():
+            val = self.opt_r_fin.value()
+            if val <= 0:
+                return "R_fin must be strictly positive (> 0)."
+            fwhm_fin = ref_wave / val
+            desc_fin = f"R_fin = {val:.0f} (≈ {fwhm_fin:.2f} Å at 5000 Å)"
+
+        if fwhm_ini is not None and fwhm_fin is not None:
+            if fwhm_fin < fwhm_ini:
+                return (
+                    f"Invalid resolution configuration:\n\n"
+                    f"Target resolution ({desc_fin}) is HIGHER than initial resolution ({desc_ini}).\n\n"
+                    f"Spectral convolution can only degrade resolution to a broader value:\n"
+                    f"  • σ_fin must be ≥ σ_ini\n"
+                    f"  • FWHM_fin must be ≥ FWHM_ini\n"
+                    f"  • R_fin must be ≤ R_ini"
+                )
+
+        return None
 
     def _on_run(self):
         if self.worker and self.worker.isRunning():
@@ -583,6 +649,12 @@ class MainWindow(QMainWindow):
 
         if errors:
             QMessageBox.warning(self, "Missing Input", "\n".join(errors))
+            return
+
+        # Validate resolution parameters
+        res_error = self._validate_resolution_settings()
+        if res_error:
+            QMessageBox.critical(self, "Invalid Resolution Parameters", res_error)
             return
 
         index_defs = self.combo_idx_defs.currentData()

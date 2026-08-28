@@ -383,7 +383,7 @@ def eqw(wave,
 
             
     
-    #converting sigma or R to FWHM
+    # converting sigma or R to FWHM
     try:
         FWHM_ini = (sigma_ini*2.355/c)*wave
     except:
@@ -399,25 +399,49 @@ def eqw(wave,
         except:
             pass #print('Using FWHM_fin provided', end='\r')
 
+    # Validate resolution parameters before convolution
+    if (FWHM_ini is not None) and (FWHM_fin is not None):
+        try:
+            f_ini_arr = np.asarray(FWHM_ini, dtype=float)
+            f_fin_arr = np.asarray(FWHM_fin, dtype=float)
+            if np.all(f_fin_arr < f_ini_arr):
+                raise ValueError(
+                    f"Invalid resolution: target resolution is higher than initial resolution "
+                    f"(mean FWHM_fin={np.mean(f_fin_arr):.3f} Å < mean FWHM_ini={np.mean(f_ini_arr):.3f} Å). "
+                    f"Spectral convolution can only degrade resolution (FWHM_fin >= FWHM_ini)."
+                )
+        except TypeError:
+            pass
+
     measurements = []
     head_measurements = []
-    # maybe there is a better way to not use this if-else for the error
-    # but i cannot fugure it out now...   
-    if isinstance(error, np.ndarray): # test if the user provided an error spectrum
+    old_flux = np.copy(flux)
+    
+    if (FWHM_ini is not None) and (FWHM_fin is not None):
         try:
-            sigma = np.sqrt(np.power(FWHM_fin,2)-np.power(FWHM_ini,2))/2.355
-            sigma = np.nan_to_num(sigma) #turn negative values to zero
-            sigma = sigma.clip(0.01) # add a really small number instead of zero (code crashed otherwise)
-            flux_new = varsmooth(x = wave, y = flux, sig_x = sigma)
-            error_new = varsmooth_error(x = wave, error=error, sig_x = sigma) #one needs to convolve the variance with the square of the kernel
-            print('Convolution successfull from', FWHM_ini, 'to', FWHM_fin)
-            old_flux = np.copy(flux) #just to have the option to plot.
-            old_error = np.copy(error) #just to have the option to plot.
+            diff2 = np.power(FWHM_fin, 2) - np.power(FWHM_ini, 2)
+            if np.all(diff2 < 0):
+                raise ValueError(
+                    f"Cannot convolve: FWHM_fin < FWHM_ini. Final resolution is higher than initial resolution."
+                )
+            diff2 = np.clip(diff2, 0, None)
+            sigma = np.sqrt(diff2) / 2.355
+            sigma = np.nan_to_num(sigma).clip(0.01)
+            flux_new = varsmooth(x=wave, y=flux, sig_x=sigma)
+            if isinstance(error, np.ndarray):
+                error_new = varsmooth_error(x=wave, error=error, sig_x=sigma)
+                old_error = np.copy(error)
+                error = error_new
+            print(f'Convolution successful from FWHM_ini={np.mean(FWHM_ini):.3f} Å to FWHM_fin={np.mean(FWHM_fin):.3f} Å')
+            old_flux = np.copy(flux)
             flux = flux_new
-            error = error_new
-        except:
-            print('Convolution not performed. Check FWHM ini and fin: ',FWHM_ini, FWHM_fin)
-        
+        except ValueError as ve:
+            print(f'Resolution error: {ve}')
+            raise ve
+        except Exception as e:
+            print('Convolution not performed. Check FWHM ini and fin: ', FWHM_ini, FWHM_fin, e)
+
+    if isinstance(error, np.ndarray): # test if the user provided an error spectrum
         if simulate is not None:
             error[np.where(error <= 0)] = 1e-20
             sim_flux=np.random.normal(flux,error, size=(simulate, len(flux)))
@@ -508,16 +532,6 @@ def eqw(wave,
                 measurements.append(np.nan)
                 head_measurements.append('e_'+line['name'])
     else:
-        try:
-            sigma = np.sqrt(np.power(FWHM_fin,2)-np.power(FWHM_ini,2))/2.355
-            sigma = np.nan_to_num(sigma) #turn negative values to zero
-            sigma = sigma.clip(0.01) # add a really small number instead of zero (code crashed otherwise)
-            old_flux = np.copy(flux)
-            flux = varsmooth(x = wave, y = flux, sig_x = sigma)
-
-            print('Convolution successfull from', FWHM_ini, 'to', FWHM_fin)
-        except:
-            print('Convolution not performed. Check FWHM ini and fin: ',FWHM_ini, FWHM_fin)
         plt_pos=0
         for line in idx_definitions:
            
