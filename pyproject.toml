@@ -19,7 +19,11 @@ dependencies = [
     "pandas",
     "scipy",
     "matplotlib",
+    "PyQt5",
 ]
+
+[project.scripts]
+pacce-gui = "pacce.gui.main_gui:main"
 
 [project.urls]
 Homepage = "https://github.com/rriffel/pacce"
@@ -32,4 +36,6 @@ include = ["pacce*"]
 pacce = [
     "suport_files/*",
     "examples/**/*",
+    "assets/*",
 ]
+

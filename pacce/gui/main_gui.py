@@ -1,0 +1,859 @@
+"""
+main_gui.py — Main PACCE GUI window.
+
+A modern, single-page interface for configuring and running PACCE
+(Python Algorithm to Compute Continuum and Equivalent widths).
+"""
+
+import os
+import sys
+import json
+import io
+import traceback
+import threading
+
+import numpy as np
+import pandas as pd
+
+from PyQt5.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QLabel, QPushButton, QScrollArea, QGroupBox, QCheckBox,
+    QTableWidget, QTableWidgetItem, QSplitter, QProgressBar,
+    QFileDialog, QMessageBox, QSizePolicy, QComboBox, QSpacerItem
+)
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
+from PyQt5.QtGui import QFont, QIcon, QPixmap, QColor
+
+from .constants import (
+    STYLESHEET, ACCENT, ACCENT_HOVER, CARD_BG, TEXT_COLOR,
+    MUTED, BORDER_COLOR, SUCCESS_COLOR, DANGER_COLOR
+)
+from .custom_widgets import (
+    FilePickerRow, ToggleDoubleRow, ToggleIntRow,
+    ToggleTextRow, ToggleFilePickerRow, LogConsole
+)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def get_logo_path():
+    """Return the path to the PACCE logo, or None if not found."""
+    pkg_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for ext in ("jpg", "jpeg", "png"):
+        p = os.path.join(pkg_dir, "assets", f"logo.{ext}")
+        if os.path.isfile(p):
+            return p
+    return None
+
+
+def get_support_dir():
+    """Return the path to the bundled support_files directory."""
+    pkg_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(pkg_dir, "suport_files")
+
+
+# ---------------------------------------------------------------------------
+# Worker Thread — runs pacce() in the background
+# ---------------------------------------------------------------------------
+
+class PacceWorker(QThread):
+    """Run the PACCE wrapper in a background thread."""
+
+    log_signal = pyqtSignal(str)
+    finished_signal = pyqtSignal(object)   # pandas DataFrame or None
+    error_signal = pyqtSignal(str)
+
+    def __init__(self, kwargs):
+        super().__init__()
+        self.kwargs = kwargs
+
+    def run(self):
+        # Redirect stdout so print() calls from pacce are captured
+        old_stdout = sys.stdout
+        sys.stdout = _StreamRedirector(self.log_signal)
+        try:
+            from pacce.pacce_wapper import pacce
+            result = pacce(**self.kwargs)
+            self.finished_signal.emit(result)
+        except Exception:
+            tb = traceback.format_exc()
+            self.error_signal.emit(tb)
+            self.finished_signal.emit(None)
+        finally:
+            sys.stdout = old_stdout
+
+
+class _StreamRedirector(io.TextIOBase):
+    """Redirect write() calls to a Qt signal."""
+
+    def __init__(self, signal):
+        super().__init__()
+        self._signal = signal
+
+    def write(self, text):
+        if text and text.strip():
+            self._signal.emit(text)
+        return len(text) if text else 0
+
+    def flush(self):
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Main Window
+# ---------------------------------------------------------------------------
+
+class MainWindow(QMainWindow):
+    """PACCE — Main application window."""
+
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("PACCE — Python Algorithm to Compute Continuum & Equivalent Widths")
+        self.resize(1200, 860)
+        self.setStyleSheet(STYLESHEET)
+
+        self.worker = None
+        self.result_df = None
+
+        self._init_ui()
+
+    # -----------------------------------------------------------------
+    # UI Construction
+    # -----------------------------------------------------------------
+
+    def _init_ui(self):
+        central = QWidget(self)
+        self.setCentralWidget(central)
+        main_layout = QHBoxLayout(central)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # Sidebar
+        sidebar = self._create_sidebar()
+        main_layout.addWidget(sidebar)
+
+        # Content: top panels + bottom log/results
+        right_side = QWidget()
+        right_layout = QVBoxLayout(right_side)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(0)
+
+        splitter = QSplitter(Qt.Vertical)
+
+        # Top: scrollable config panels
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll_content = QWidget()
+        self.panels_layout = QVBoxLayout(scroll_content)
+        self.panels_layout.setContentsMargins(20, 16, 20, 16)
+        self.panels_layout.setSpacing(14)
+
+        self._create_panel_input_files()
+        self._create_panel_resolution()
+        self._create_panel_options()
+        self._create_panel_plots()
+
+        self.panels_layout.addStretch()
+        scroll.setWidget(scroll_content)
+        splitter.addWidget(scroll)
+
+        # Bottom: log + results
+        bottom = self._create_bottom_panel()
+        splitter.addWidget(bottom)
+        splitter.setStretchFactor(0, 3)
+        splitter.setStretchFactor(1, 2)
+
+        right_layout.addWidget(splitter)
+        main_layout.addWidget(right_side, 1)
+
+        # Status bar
+        self.statusBar().showMessage("Ready — Configure parameters and click Run PACCE.")
+
+    # ----- Sidebar -----
+
+    def _create_sidebar(self):
+        sidebar = QWidget()
+        sidebar.setFixedWidth(240)
+        sidebar.setStyleSheet(
+            f"background-color: {CARD_BG}; border-right: 1px solid {BORDER_COLOR};"
+        )
+        layout = QVBoxLayout(sidebar)
+        layout.setContentsMargins(12, 20, 12, 20)
+        layout.setSpacing(8)
+
+        # Title
+        title = QLabel("PACCE")
+        title.setStyleSheet(
+            f"font-size: 20px; font-weight: 800; color: {ACCENT}; margin-bottom: 2px;"
+        )
+        sub = QLabel("Continuum & EW Measurement")
+        sub.setStyleSheet(f"font-size: 11px; color: {MUTED}; margin-bottom: 4px;")
+        sub.setWordWrap(True)
+        layout.addWidget(title)
+        layout.addWidget(sub)
+
+        # Logo
+        logo_path = get_logo_path()
+        if logo_path:
+            pix = QPixmap(logo_path)
+            if not pix.isNull():
+                lbl = QLabel()
+                lbl.setPixmap(pix.scaledToWidth(190, Qt.SmoothTransformation))
+                lbl.setAlignment(Qt.AlignCenter)
+                lbl.setStyleSheet(
+                    "background: transparent; border: none; margin-bottom: 12px;"
+                )
+                layout.addWidget(lbl)
+
+        # Section navigation buttons
+        self.nav_buttons = []
+        sections = [
+            ("1. Input Files", 0),
+            ("2. Spectral Resolution", 1),
+            ("3. Options & Corrections", 2),
+            ("4. Plots & Output", 3),
+        ]
+        for text, idx in sections:
+            btn = QPushButton(text)
+            btn.setObjectName("navBtn")
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.clicked.connect(lambda _, i=idx: self._scroll_to_section(i))
+            self.nav_buttons.append(btn)
+            layout.addWidget(btn)
+
+        layout.addSpacing(16)
+
+        # Run button
+        self.btn_run = QPushButton("▶  Run PACCE")
+        self.btn_run.setStyleSheet(
+            f"background-color: {SUCCESS_COLOR}; color: white; font-weight: bold;"
+            f"font-size: 14px; padding: 10px 16px; border-radius: 8px;"
+        )
+        self.btn_run.setCursor(Qt.PointingHandCursor)
+        self.btn_run.clicked.connect(self._on_run)
+        layout.addWidget(self.btn_run)
+
+        layout.addSpacing(12)
+
+        # Config state
+        lbl_cfg = QLabel("Configuration")
+        lbl_cfg.setStyleSheet(
+            f"color: {ACCENT}; font-size: 11px; font-weight: bold; margin-bottom: 2px;"
+        )
+        layout.addWidget(lbl_cfg)
+
+        btn_load = QPushButton("Load Config")
+        btn_load.setStyleSheet(
+            "background-color: #F8FAFC; border: 1px solid #CBD5E1;"
+            "border-radius: 6px; padding: 6px; color: #334155;"
+        )
+        btn_load.setCursor(Qt.PointingHandCursor)
+        btn_load.clicked.connect(self._on_load_config)
+        layout.addWidget(btn_load)
+
+        btn_save = QPushButton("Save Config")
+        btn_save.setStyleSheet(
+            "background-color: #F8FAFC; border: 1px solid #CBD5E1;"
+            "border-radius: 6px; padding: 6px; color: #334155;"
+        )
+        btn_save.setCursor(Qt.PointingHandCursor)
+        btn_save.clicked.connect(self._on_save_config)
+        layout.addWidget(btn_save)
+
+        layout.addStretch()
+
+        # Footer
+        footer = QLabel("Rogério Riffel\nJoão P. V. Benedetti\nUFRGS / Depto Astronomia")
+        footer.setStyleSheet(f"color: {MUTED}; font-size: 11px; line-height: 1.4;")
+        layout.addWidget(footer)
+
+        return sidebar
+
+    # ----- Section Scroll -----
+
+    def _scroll_to_section(self, idx):
+        """Scroll the main area to the requested GroupBox."""
+        targets = [self.grp_input, self.grp_resolution, self.grp_options, self.grp_plots]
+        if 0 <= idx < len(targets):
+            targets[idx].ensurePolished()
+            # Find the scroll area
+            scroll = self.centralWidget().findChild(QScrollArea)
+            if scroll:
+                scroll.ensureWidgetVisible(targets[idx], 0, 20)
+
+        # Highlight active nav button
+        for i, btn in enumerate(self.nav_buttons):
+            btn.setProperty("active", "true" if i == idx else "false")
+            btn.style().unpolish(btn)
+            btn.style().polish(btn)
+
+    # -----------------------------------------------------------------
+    # Panel 1: Input Files
+    # -----------------------------------------------------------------
+
+    def _create_panel_input_files(self):
+        self.grp_input = QGroupBox("Input Files")
+        lay = QVBoxLayout(self.grp_input)
+        lay.setSpacing(10)
+
+        self.pick_spectrum_list = FilePickerRow(
+            "Spectrum List:", placeholder="ASCII table with 'file' column",
+            file_filter="Data Files (*.dat *.txt *.csv);;All Files (*)"
+        )
+        lay.addWidget(self.pick_spectrum_list)
+
+        self.pick_spectra_dir = FilePickerRow(
+            "Spectra Directory:", placeholder="Folder containing spectra",
+            is_directory=True
+        )
+        lay.addWidget(self.pick_spectra_dir)
+
+        # Index Definitions with combo for bundled files
+        idx_row = QWidget()
+        idx_layout = QHBoxLayout(idx_row)
+        idx_layout.setContentsMargins(0, 0, 0, 0)
+        idx_layout.setSpacing(8)
+
+        idx_label = QLabel("Index Definitions:")
+        idx_label.setFixedWidth(140)
+        idx_label.setStyleSheet("font-weight: 500;")
+        idx_layout.addWidget(idx_label)
+
+        self.combo_idx_defs = QComboBox()
+        self.combo_idx_defs.setEditable(False)
+        self.combo_idx_defs.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self._populate_idx_combo()
+        idx_layout.addWidget(self.combo_idx_defs, 1)
+
+        btn_custom_idx = QPushButton("Custom…")
+        btn_custom_idx.setFixedWidth(90)
+        btn_custom_idx.setCursor(Qt.PointingHandCursor)
+        btn_custom_idx.clicked.connect(self._on_custom_idx)
+        idx_layout.addWidget(btn_custom_idx)
+
+        lay.addWidget(idx_row)
+
+        self.pick_output = FilePickerRow(
+            "Output File:", placeholder="measurements.txt",
+            file_filter="Text Files (*.txt *.dat *.csv);;All Files (*)"
+        )
+        self.pick_output.set_text("measurements.txt")
+        lay.addWidget(self.pick_output)
+
+        self.panels_layout.addWidget(self.grp_input)
+
+    def _populate_idx_combo(self):
+        """Add bundled .ind files from suport_files/ to the combo box."""
+        self.combo_idx_defs.clear()
+        support_dir = get_support_dir()
+        if os.path.isdir(support_dir):
+            for f in sorted(os.listdir(support_dir)):
+                if f.endswith(".ind"):
+                    self.combo_idx_defs.addItem(f, os.path.join(support_dir, f))
+
+    def _on_custom_idx(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select Index Definitions File", "",
+            "Index Files (*.ind *.txt *.dat);;All Files (*)"
+        )
+        if path:
+            name = os.path.basename(path)
+            # Avoid duplicates
+            idx = self.combo_idx_defs.findText(name)
+            if idx >= 0:
+                self.combo_idx_defs.setCurrentIndex(idx)
+            else:
+                self.combo_idx_defs.addItem(name, path)
+                self.combo_idx_defs.setCurrentIndex(self.combo_idx_defs.count() - 1)
+
+    # -----------------------------------------------------------------
+    # Panel 2: Spectral Resolution
+    # -----------------------------------------------------------------
+
+    def _create_panel_resolution(self):
+        self.grp_resolution = QGroupBox("Spectral Resolution")
+        lay = QVBoxLayout(self.grp_resolution)
+        lay.setSpacing(8)
+
+        info = QLabel(
+            "Enable the resolution parameters needed. Initial values may also be "
+            "provided per-spectrum in the input table (columns: sigma, FWHM, R)."
+        )
+        info.setStyleSheet(f"color: {MUTED}; font-size: 12px; margin-bottom: 4px;")
+        info.setWordWrap(True)
+        lay.addWidget(info)
+
+        self.opt_sigma_ini = ToggleDoubleRow(
+            "σ_ini", suffix="km/s", max_val=999999, decimals=2
+        )
+        lay.addWidget(self.opt_sigma_ini)
+
+        self.opt_sigma_fin = ToggleDoubleRow(
+            "σ_fin", suffix="km/s", max_val=999999, decimals=2
+        )
+        lay.addWidget(self.opt_sigma_fin)
+
+        self.opt_fwhm_ini = ToggleDoubleRow(
+            "FWHM_ini", suffix="Å", max_val=999999, decimals=4
+        )
+        lay.addWidget(self.opt_fwhm_ini)
+
+        self.opt_fwhm_fin = ToggleDoubleRow(
+            "FWHM_fin", suffix="Å", max_val=999999, decimals=4
+        )
+        lay.addWidget(self.opt_fwhm_fin)
+
+        self.opt_r_ini = ToggleDoubleRow(
+            "R_ini", suffix="λ/Δλ", max_val=999999, decimals=1
+        )
+        lay.addWidget(self.opt_r_ini)
+
+        self.opt_r_fin = ToggleDoubleRow(
+            "R_fin", suffix="λ/Δλ", max_val=999999, decimals=1
+        )
+        lay.addWidget(self.opt_r_fin)
+
+        self.panels_layout.addWidget(self.grp_resolution)
+
+    # -----------------------------------------------------------------
+    # Panel 3: Options & Corrections
+    # -----------------------------------------------------------------
+
+    def _create_panel_options(self):
+        self.grp_options = QGroupBox("Options & Corrections")
+        lay = QVBoxLayout(self.grp_options)
+        lay.setSpacing(8)
+
+        self.opt_z = ToggleDoubleRow(
+            "Redshift (z)", suffix="", max_val=20.0, decimals=8, default_val=0.0
+        )
+        lay.addWidget(self.opt_z)
+
+        self.opt_simulate = ToggleIntRow(
+            "Monte Carlo (N)", suffix="iterations", min_val=1,
+            max_val=100000, default_val=100
+        )
+        lay.addWidget(self.opt_simulate)
+
+        self.chk_error = QCheckBox("  Use error spectrum (3rd column in spectra)")
+        lay.addWidget(self.chk_error)
+
+        self.chk_neg_to_zero = QCheckBox("  Set negative EW to zero")
+        lay.addWidget(self.chk_neg_to_zero)
+
+        self.opt_a_to_mag = ToggleTextRow(
+            "Å → Magnitude", placeholder="Comma-separated index names (e.g. Mg1, Mg2)"
+        )
+        lay.addWidget(self.opt_a_to_mag)
+
+        self.opt_compute_idx = ToggleFilePickerRow(
+            "Composite Indices", placeholder="File with expressions (one per line)",
+            file_filter="Text Files (*.txt);;All Files (*)"
+        )
+        lay.addWidget(self.opt_compute_idx)
+
+        self.panels_layout.addWidget(self.grp_options)
+
+    # -----------------------------------------------------------------
+    # Panel 4: Plots & Output
+    # -----------------------------------------------------------------
+
+    def _create_panel_plots(self):
+        self.grp_plots = QGroupBox("Plots & Output")
+        lay = QVBoxLayout(self.grp_plots)
+        lay.setSpacing(8)
+
+        self.opt_single_plots = ToggleFilePickerRow(
+            "Individual Plots", placeholder="Directory for per-index figures",
+            is_directory=True
+        )
+        lay.addWidget(self.opt_single_plots)
+
+        self.opt_all_plot = ToggleTextRow(
+            "All-Indices Plot", placeholder="Filename (e.g. all_indices.png)"
+        )
+        lay.addWidget(self.opt_all_plot)
+
+        self.opt_all_plot_dir = ToggleFilePickerRow(
+            "All-Plots Directory", placeholder="Directory for combined plot",
+            is_directory=True
+        )
+        lay.addWidget(self.opt_all_plot_dir)
+
+        self.opt_log_file = ToggleTextRow(
+            "Log File", placeholder="pacce_log.txt"
+        )
+        lay.addWidget(self.opt_log_file)
+
+        self.panels_layout.addWidget(self.grp_plots)
+
+    # -----------------------------------------------------------------
+    # Bottom Panel: Progress + Log + Results Table
+    # -----------------------------------------------------------------
+
+    def _create_bottom_panel(self):
+        bottom = QWidget()
+        lay = QVBoxLayout(bottom)
+        lay.setContentsMargins(20, 8, 20, 12)
+        lay.setSpacing(8)
+
+        # Progress bar
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 0)  # indeterminate
+        self.progress.setVisible(False)
+        lay.addWidget(self.progress)
+
+        # Horizontal split: log + table
+        h_split = QSplitter(Qt.Horizontal)
+
+        # Log console
+        log_group = QWidget()
+        log_lay = QVBoxLayout(log_group)
+        log_lay.setContentsMargins(0, 0, 0, 0)
+        log_lay.setSpacing(4)
+        lbl_log = QLabel("Run Log")
+        lbl_log.setStyleSheet(
+            f"color: {ACCENT}; font-size: 12px; font-weight: bold;"
+        )
+        log_lay.addWidget(lbl_log)
+        self.log_console = LogConsole()
+        log_lay.addWidget(self.log_console)
+        h_split.addWidget(log_group)
+
+        # Results table
+        table_group = QWidget()
+        table_lay = QVBoxLayout(table_group)
+        table_lay.setContentsMargins(0, 0, 0, 0)
+        table_lay.setSpacing(4)
+
+        hdr = QWidget()
+        hdr_lay = QHBoxLayout(hdr)
+        hdr_lay.setContentsMargins(0, 0, 0, 0)
+        lbl_res = QLabel("Results Preview")
+        lbl_res.setStyleSheet(
+            f"color: {ACCENT}; font-size: 12px; font-weight: bold;"
+        )
+        hdr_lay.addWidget(lbl_res)
+        hdr_lay.addStretch()
+        self.btn_export = QPushButton("Export CSV")
+        self.btn_export.setFixedHeight(28)
+        self.btn_export.setStyleSheet(
+            "font-size: 11px; padding: 4px 10px;"
+        )
+        self.btn_export.setCursor(Qt.PointingHandCursor)
+        self.btn_export.setEnabled(False)
+        self.btn_export.clicked.connect(self._on_export_csv)
+        hdr_lay.addWidget(self.btn_export)
+        table_lay.addWidget(hdr)
+
+        self.results_table = QTableWidget()
+        self.results_table.setAlternatingRowColors(True)
+        table_lay.addWidget(self.results_table)
+        h_split.addWidget(table_group)
+
+        h_split.setStretchFactor(0, 2)
+        h_split.setStretchFactor(1, 3)
+        lay.addWidget(h_split, 1)
+
+        return bottom
+
+    # -----------------------------------------------------------------
+    # Run PACCE
+    # -----------------------------------------------------------------
+
+    def _on_run(self):
+        if self.worker and self.worker.isRunning():
+            QMessageBox.warning(self, "Running", "PACCE is already running.")
+            return
+
+        # Validate required inputs
+        filename = self.pick_spectrum_list.text()
+        path_to_files = self.pick_spectra_dir.text()
+        idx_idx = self.combo_idx_defs.currentIndex()
+
+        errors = []
+        if not filename:
+            errors.append("Spectrum list file is required.")
+        if not path_to_files:
+            errors.append("Spectra directory is required.")
+        if idx_idx < 0:
+            errors.append("Index definitions file is required.")
+
+        if errors:
+            QMessageBox.warning(self, "Missing Input", "\n".join(errors))
+            return
+
+        index_defs = self.combo_idx_defs.currentData()
+        output_file = self.pick_output.text() or "measurements.txt"
+
+        # Build kwargs for pacce()
+        kwargs = {
+            "filename": filename,
+            "path_to_files": path_to_files,
+            "IndexDefs": index_defs,
+            "output_file": output_file,
+        }
+
+        # Resolution
+        if self.opt_sigma_ini.is_enabled():
+            kwargs["sigma_ini"] = self.opt_sigma_ini.value()
+        if self.opt_sigma_fin.is_enabled():
+            kwargs["sigma_fin"] = self.opt_sigma_fin.value()
+        if self.opt_fwhm_ini.is_enabled():
+            kwargs["FWHM_ini"] = self.opt_fwhm_ini.value()
+        if self.opt_fwhm_fin.is_enabled():
+            kwargs["FWHM_fin"] = self.opt_fwhm_fin.value()
+        if self.opt_r_ini.is_enabled():
+            kwargs["R_ini"] = self.opt_r_ini.value()
+        if self.opt_r_fin.is_enabled():
+            kwargs["R_fin"] = self.opt_r_fin.value()
+
+        # Options
+        if self.opt_z.is_enabled():
+            kwargs["z"] = self.opt_z.value()
+        if self.opt_simulate.is_enabled():
+            kwargs["simulate"] = self.opt_simulate.value()
+        if self.chk_error.isChecked():
+            kwargs["error"] = True
+        if self.chk_neg_to_zero.isChecked():
+            kwargs["negative_Ew_to_zero"] = True
+
+        if self.opt_a_to_mag.is_enabled():
+            txt = self.opt_a_to_mag.text()
+            if txt:
+                kwargs["A_to_mag"] = [s.strip() for s in txt.split(",") if s.strip()]
+        if self.opt_compute_idx.is_enabled():
+            kwargs["compute_idx"] = self.opt_compute_idx.text()
+
+        # Plots
+        if self.opt_single_plots.is_enabled():
+            kwargs["path_singleind_plots"] = self.opt_single_plots.text()
+        if self.opt_all_plot.is_enabled():
+            kwargs["AllIndicesPlot"] = self.opt_all_plot.text()
+        if self.opt_all_plot_dir.is_enabled():
+            kwargs["allindices_plot_path"] = self.opt_all_plot_dir.text() or "./"
+        if self.opt_log_file.is_enabled():
+            kwargs["print_log"] = self.opt_log_file.text()
+
+        # Clear previous run
+        self.log_console.clear_log()
+        self.results_table.clear()
+        self.results_table.setRowCount(0)
+        self.results_table.setColumnCount(0)
+        self.btn_export.setEnabled(False)
+        self.result_df = None
+
+        # Start worker
+        self.progress.setVisible(True)
+        self.btn_run.setEnabled(False)
+        self.btn_run.setText("⏳  Running…")
+        self.statusBar().showMessage("Running PACCE…")
+
+        self.worker = PacceWorker(kwargs)
+        self.worker.log_signal.connect(self.log_console.append_log)
+        self.worker.error_signal.connect(self._on_worker_error)
+        self.worker.finished_signal.connect(self._on_worker_finished)
+        self.worker.start()
+
+    def _on_worker_error(self, tb):
+        self.log_console.append_log(f"\n❌ ERROR:\n{tb}")
+
+    def _on_worker_finished(self, result):
+        self.progress.setVisible(False)
+        self.btn_run.setEnabled(True)
+        self.btn_run.setText("▶  Run PACCE")
+
+        if result is not None and isinstance(result, pd.DataFrame):
+            self.result_df = result
+            self._populate_table(result)
+            self.btn_export.setEnabled(True)
+            self.log_console.append_log("\n✅ PACCE finished successfully.")
+            self.statusBar().showMessage("Done — Results available in the preview table.")
+        else:
+            self.statusBar().showMessage("Run finished with errors. Check the log.")
+
+    def _populate_table(self, df):
+        """Fill QTableWidget from a pandas DataFrame."""
+        self.results_table.clear()
+        cols = list(df.columns)
+        self.results_table.setColumnCount(len(cols))
+        self.results_table.setHorizontalHeaderLabels(cols)
+        self.results_table.setRowCount(len(df))
+
+        for r, (_, row) in enumerate(df.iterrows()):
+            for c, col in enumerate(cols):
+                val = row[col]
+                if isinstance(val, float):
+                    text = f"{val:.6f}"
+                else:
+                    text = str(val)
+                item = QTableWidgetItem(text)
+                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                self.results_table.setItem(r, c, item)
+
+        self.results_table.resizeColumnsToContents()
+
+    def _on_export_csv(self):
+        if self.result_df is None:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export Results as CSV", "pacce_results.csv",
+            "CSV Files (*.csv);;All Files (*)"
+        )
+        if path:
+            self.result_df.to_csv(path, index=False)
+            self.statusBar().showMessage(f"Results exported to {path}")
+
+    # -----------------------------------------------------------------
+    # Save / Load Config
+    # -----------------------------------------------------------------
+
+    def _gather_config(self):
+        """Collect all GUI settings into a dict."""
+        cfg = {}
+        cfg["spectrum_list"] = self.pick_spectrum_list.text()
+        cfg["spectra_dir"] = self.pick_spectra_dir.text()
+        cfg["idx_defs_index"] = self.combo_idx_defs.currentIndex()
+        cfg["idx_defs_text"] = self.combo_idx_defs.currentText()
+        cfg["idx_defs_path"] = self.combo_idx_defs.currentData()
+        cfg["output_file"] = self.pick_output.text()
+
+        # Resolution toggles
+        for name in ("sigma_ini", "sigma_fin", "fwhm_ini", "fwhm_fin", "r_ini", "r_fin"):
+            w = getattr(self, f"opt_{name}")
+            cfg[name] = {"enabled": w.is_enabled(), "value": w.spinbox.value()}
+
+        # Options
+        cfg["z"] = {"enabled": self.opt_z.is_enabled(), "value": self.opt_z.spinbox.value()}
+        cfg["simulate"] = {"enabled": self.opt_simulate.is_enabled(), "value": self.opt_simulate.spinbox.value()}
+        cfg["error"] = self.chk_error.isChecked()
+        cfg["neg_to_zero"] = self.chk_neg_to_zero.isChecked()
+
+        cfg["a_to_mag"] = {"enabled": self.opt_a_to_mag.is_enabled(), "value": self.opt_a_to_mag.line_edit.text()}
+        cfg["compute_idx"] = {"enabled": self.opt_compute_idx.is_enabled(), "value": self.opt_compute_idx.line_edit.text()}
+
+        # Plots
+        cfg["single_plots"] = {"enabled": self.opt_single_plots.is_enabled(), "value": self.opt_single_plots.line_edit.text()}
+        cfg["all_plot"] = {"enabled": self.opt_all_plot.is_enabled(), "value": self.opt_all_plot.line_edit.text()}
+        cfg["all_plot_dir"] = {"enabled": self.opt_all_plot_dir.is_enabled(), "value": self.opt_all_plot_dir.line_edit.text()}
+        cfg["log_file"] = {"enabled": self.opt_log_file.is_enabled(), "value": self.opt_log_file.line_edit.text()}
+
+        return cfg
+
+    def _apply_config(self, cfg):
+        """Restore GUI settings from a dict."""
+        self.pick_spectrum_list.set_text(cfg.get("spectrum_list", ""))
+        self.pick_spectra_dir.set_text(cfg.get("spectra_dir", ""))
+        self.pick_output.set_text(cfg.get("output_file", "measurements.txt"))
+
+        # Restore idx defs combo
+        idx_path = cfg.get("idx_defs_path")
+        if idx_path:
+            found = False
+            for i in range(self.combo_idx_defs.count()):
+                if self.combo_idx_defs.itemData(i) == idx_path:
+                    self.combo_idx_defs.setCurrentIndex(i)
+                    found = True
+                    break
+            if not found:
+                name = cfg.get("idx_defs_text", os.path.basename(idx_path))
+                self.combo_idx_defs.addItem(name, idx_path)
+                self.combo_idx_defs.setCurrentIndex(self.combo_idx_defs.count() - 1)
+
+        # Resolution
+        for name in ("sigma_ini", "sigma_fin", "fwhm_ini", "fwhm_fin", "r_ini", "r_fin"):
+            w = getattr(self, f"opt_{name}")
+            d = cfg.get(name, {})
+            w.set_state(d.get("enabled", False), d.get("value"))
+
+        # Options
+        d = cfg.get("z", {})
+        self.opt_z.set_state(d.get("enabled", False), d.get("value"))
+        d = cfg.get("simulate", {})
+        self.opt_simulate.set_state(d.get("enabled", False), d.get("value"))
+        self.chk_error.setChecked(cfg.get("error", False))
+        self.chk_neg_to_zero.setChecked(cfg.get("neg_to_zero", False))
+
+        d = cfg.get("a_to_mag", {})
+        self.opt_a_to_mag.set_state(d.get("enabled", False), d.get("value"))
+        d = cfg.get("compute_idx", {})
+        self.opt_compute_idx.set_state(d.get("enabled", False), d.get("value"))
+
+        # Plots
+        d = cfg.get("single_plots", {})
+        self.opt_single_plots.set_state(d.get("enabled", False), d.get("value"))
+        d = cfg.get("all_plot", {})
+        self.opt_all_plot.set_state(d.get("enabled", False), d.get("value"))
+        d = cfg.get("all_plot_dir", {})
+        self.opt_all_plot_dir.set_state(d.get("enabled", False), d.get("value"))
+        d = cfg.get("log_file", {})
+        self.opt_log_file.set_state(d.get("enabled", False), d.get("value"))
+
+    def _on_save_config(self):
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save PACCE Configuration", "pacce_config.json",
+            "JSON Files (*.json);;All Files (*)"
+        )
+        if path:
+            cfg = self._gather_config()
+            with open(path, "w") as f:
+                json.dump(cfg, f, indent=2, default=str)
+            self.statusBar().showMessage(f"Configuration saved to {path}")
+
+    def _on_load_config(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Load PACCE Configuration", "",
+            "JSON Files (*.json);;All Files (*)"
+        )
+        if path:
+            with open(path) as f:
+                cfg = json.load(f)
+            self._apply_config(cfg)
+            self.statusBar().showMessage(f"Configuration loaded from {path}")
+
+
+# ---------------------------------------------------------------------------
+# Entry Point
+# ---------------------------------------------------------------------------
+
+def main():
+    app = QApplication(sys.argv)
+    app.setStyle("Fusion")
+    app.setApplicationName("PACCE")
+
+    # Configure global font
+    font = QFont("Inter", 10)
+    app.setFont(font)
+
+    # Set application icon
+    logo_path = get_logo_path()
+    if logo_path:
+        app.setWindowIcon(QIcon(logo_path))
+
+    # Splash screen
+    splash = None
+    if logo_path:
+        pix = QPixmap(logo_path)
+        if not pix.isNull():
+            from PyQt5.QtWidgets import QSplashScreen
+            splash_pix = pix.scaledToWidth(480, Qt.SmoothTransformation)
+            splash = QSplashScreen(splash_pix, Qt.WindowStaysOnTopHint)
+            splash.showMessage(
+                "  PACCE — Initializing…",
+                Qt.AlignBottom | Qt.AlignLeft,
+                QColor("#FFFFFF"),
+            )
+            splash.show()
+            app.processEvents()
+
+    window = MainWindow()
+    if splash:
+        splash.finish(window)
+    window.show()
+    sys.exit(app.exec_())
+
+
+if __name__ == "__main__":
+    main()
