@@ -18,10 +18,54 @@ Now includes a modern **PyQt5 Graphical User Interface (GUI)** for interactive w
 
 ## Installation
 
+It is recommended to run PACCE in an isolated Python environment (via **Conda** or **Python `venv`**).
+
+### 1. Creating a Virtual Environment
+
+#### Option A: Using Conda / Mamba (Recommended)
+
+```bash
+# Create a new environment with Python 3.12 (or >= 3.10)
+conda create -n pacce_env python=3.12 -y
+
+# Activate the environment
+conda activate pacce_env
+```
+
+#### Option B: Using Python `venv`
+
+```bash
+# Create a virtual environment
+python3 -m venv pacce_env
+
+# Activate the environment:
+# Linux / macOS:
+source pacce_env/bin/activate
+
+# Windows:
+pacce_env\Scripts\activate
+```
+
+---
+
+### 2. Installing PACCE
+
 Install directly from GitHub with `pip`:
 
 ```bash
+# Public repository (or via HTTPS token)
 pip install git+https://github.com/rriffel/pacce.git@paccegui
+
+# Private repository (via SSH key)
+pip install git+ssh://git@github.com/rriffel/pacce.git@paccegui
+```
+
+Or for local development:
+
+```bash
+git clone -b paccegui https://github.com/rriffel/pacce.git
+cd pacce
+pip install -e .
 ```
 
 ### Requirements
