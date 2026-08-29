@@ -1,6 +1,12 @@
-# PACCE
+<p align="center">
+  <img src="pacce/assets/logo.jpg" alt="PACCE Logo" width="220">
+</p>
 
-**Python Algorithm to Compute Continuum and Equivalent widths**
+<h1 align="center">PACCE</h1>
+
+<p align="center">
+  <strong>Python Algorithm to Compute Continuum and Equivalent widths</strong>
+</p>
 
 This is an updated and upgraded version of the PACCE code ([Riffel & Vale, 2011, Ap&SS, 334, 351](https://ui.adsabs.harvard.edu/abs/2011Ap%26SS.334..351R)) written in Python.
 
@@ -34,6 +40,10 @@ All dependencies are installed automatically by `pip`.
 ## Graphical User Interface (GUI)
 
 PACCE comes with a dedicated desktop graphical interface inspired by modern spectroscopy workflows.
+
+<p align="center">
+  <img src="pacce/assets/gui_screenshot.png" alt="PACCE GUI Main Screen" width="900">
+</p>
 
 ### Launching the GUI
 

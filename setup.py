@@ -15,11 +15,12 @@ setup(
         "pacce": [
             "suport_files/*",
             "examples/**/*",
+            "assets/*",
         ],
     },
     include_package_data=True,
     author="Joao P. V. Benedetti & Rogerio Riffel",
     url="https://github.com/rriffel/pacce",
     python_requires=">=3.10",
-    install_requires=["astropy", "pandas", "scipy", "matplotlib"],
+    install_requires=["astropy", "pandas", "scipy", "matplotlib", "PyQt5"],
 )
