@@ -210,6 +210,7 @@ def plotInd(line,
             path,
             wave,
             flux,
+            old_flux,
             FWHM_ini,
             FWHM_fin,
             cont_l,
@@ -262,6 +263,7 @@ def plotInd(line,
 def plotIndSingle(line,
             wave,
             flux,
+            old_flux,
             FWHM_ini,
             FWHM_fin,
             cont_l,
@@ -461,6 +463,7 @@ def eqw(wave,
                     path=path,
                     wave=wave,
                     flux=flux,
+                    old_flux=old_flux,
                     FWHM_ini=FWHM_ini,
                     FWHM_fin=FWHM_fin,
                     cont_l=cont_l,
@@ -474,6 +477,7 @@ def eqw(wave,
                     plotIndSingle(line=line,
                     wave=wave,
                     flux=flux,
+                    old_flux=old_flux,
                     FWHM_ini=FWHM_ini,
                     FWHM_fin=FWHM_fin,
                     cont_l=cont_l,
@@ -526,7 +530,8 @@ def eqw(wave,
                 head_measurements.append(line['name'])
                 measurements.append(eEW)
                 head_measurements.append('e_'+line['name'])
-            except:
+            except Exception as e:
+                print(f"Failed to measure/plot index {line['name']}: {e}")
                 measurements.append(np.nan)
                 head_measurements.append(line['name'])
                 measurements.append(np.nan)
@@ -543,6 +548,7 @@ def eqw(wave,
                     path=path,
                     wave=wave,
                     flux=flux,
+                    old_flux=old_flux,
                     FWHM_ini=FWHM_ini,
                     FWHM_fin=FWHM_fin,
                     cont_l=cont_l,
@@ -556,6 +562,7 @@ def eqw(wave,
                     plotIndSingle(line=line,
                     wave=wave,
                     flux=flux,
+                    old_flux=old_flux,
                     FWHM_ini=FWHM_ini,
                     FWHM_fin=FWHM_fin,
                     cont_l=cont_l,
@@ -608,8 +615,9 @@ def eqw(wave,
                 head_measurements.append(line['name'])
                 measurements.append(eEW)
                 head_measurements.append('e_'+line['name'])
-            
-            except:
+
+            except Exception as e:
+                print(f"Failed to measure/plot index {line['name']}: {e}")
                 measurements.append(np.nan)
                 head_measurements.append(line['name'])
                 measurements.append(np.nan)
