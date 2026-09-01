@@ -14,12 +14,14 @@ def pacce(filename = None,
           file_extension = None,
           negative_Ew_to_zero = False,
           path_singleind_plots = None,
+          do_resolution = False,
           sigma_ini = None,
           sigma_fin = None,
           FWHM_fin = None,
           FWHM_ini = None,
           R_fin=None,
           R_ini=None,
+          do_redshift = False,
           z = None,
           simulate=None,
           error = None,
@@ -29,23 +31,35 @@ def pacce(filename = None,
           AllIndicesPlot = None,
           allindices_plot_path = './allIndicesPlots/'
           ):
-    
+
     '''
      This function computes EW of emission/absorption lines from an input table or directory of spectra.
      It returns the line ID, Equivalent Width, Equivalent Width errors, Flux and line SNR.
-     
+
      usage: pacce(filename='spectra.dat', path_to_files='./spectra/', IndexDefs='defs.ind')
             or
             pacce(path_to_files='./spectra/', file_extension='.txt', IndexDefs='defs.ind')
-     
+
      filename: input ASCII table name with 'file' column (optional if file_extension is used)
      path_to_files: path to directory containing spectra
      file_extension: pattern/extension to scan in path_to_files when filename is None (e.g. '.txt', '.dat', '*.spec')
      IndexDefs: input file with the index definitions
+     do_resolution: master flag. If False, sigma/FWHM/R correction is skipped entirely,
+                    even if a 'sigma', 'FWHM' or 'R' column is present in the input table.
+     do_redshift: master flag. If False, the redshift correction is skipped entirely,
+                  even if a 'z' column is present in the input table.
     '''
-    #changing where you print the info. 
+    if not do_resolution:
+        sigma_ini = sigma_fin = FWHM_ini = FWHM_fin = R_ini = R_fin = None
+    if not do_redshift:
+        z = None
+
+    #changing where you print the info.
     term = sys.stdout
     if print_log is not None:
+        log_dir = os.path.dirname(print_log)
+        if log_dir and not os.path.isdir(log_dir):
+            os.makedirs(log_dir)
         sys.stdout = open(print_log, 'w')
 
     idx_definitions = read_idx_defs(IndexDefs) # loading idx definitions
@@ -74,26 +88,37 @@ def pacce(filename = None,
     
     file_table =  original_input.copy()
     # check if in the table there is either FWHM (A), sigma (km/s) and R (lambda/d_lambda)
-    if 'FWHM' not in file_table:
-        print('FWHM not found in table')
-        file_table['FWHM'] = FWHM_ini
+    if do_resolution:
+        if 'FWHM' not in file_table:
+            print('FWHM not found in table')
+            file_table['FWHM'] = FWHM_ini
+        else:
+            print('FWHM found in table')
+        if 'sigma' not in file_table:
+            print('sigma not found in table')
+            file_table['sigma'] = sigma_ini
+        else:
+            print('sigma found in table')
+        if 'R' not in file_table:
+            print('R not found in table')
+            file_table['R'] = R_ini
+        else:
+            print('R found in table')
     else:
-        print('FWHM found in table')
-    if 'sigma' not in file_table:
-        print('sigma not found in table')
-        file_table['sigma'] = sigma_ini
+        print('Resolution correction disabled')
+        file_table['FWHM'] = None
+        file_table['sigma'] = None
+        file_table['R'] = None
+
+    if do_redshift:
+        if 'z' not in file_table:
+            print('z not found in table')
+            file_table['z'] = z
+        else:
+            print('z found in table')
     else:
-        print('sigma found in table')
-    if 'R' not in file_table:
-        print('R not found in table')
-        file_table['R'] = R_ini    
-    else:
-        print('R found in table')
-    if 'z' not in file_table:
-        print('z not found in table')
-        file_table['z'] = z
-    else:
-        print('z found in table')
+        print('Redshift correction disabled')
+        file_table['z'] = None
     
     # create empty array to add the info from the eqw function
     error_names = np.array(['e_'+name for name in idx_definitions['name']])
@@ -181,6 +206,9 @@ def pacce(filename = None,
 
     original_input = original_input.join(data_table, on='file')
 
+    output_dir = os.path.dirname(output_file)
+    if output_dir and not os.path.isdir(output_dir):
+        os.makedirs(output_dir)
     sourceFile = open(output_file, 'w')
     print(original_input.to_string(index=False), file = sourceFile)
     sourceFile.close()

@@ -453,12 +453,19 @@ class MainWindow(QMainWindow):
         lay.setSpacing(8)
 
         info = QLabel(
-            "Enable the resolution parameters needed. Initial values may also be "
-            "provided per-spectrum in the input table (columns: sigma, FWHM, R)."
+            "Resolution correction is optional. Initial values may also be "
+            "provided per-spectrum in the input table (columns: sigma, FWHM, R), "
+            "but they are only used when the flag below is enabled."
         )
         info.setStyleSheet(f"color: {MUTED}; font-size: 12px; margin-bottom: 4px;")
         info.setWordWrap(True)
         lay.addWidget(info)
+
+        self.chk_enable_resolution = QCheckBox("  Enable Resolution Correction")
+        self.chk_enable_resolution.setStyleSheet(f"color: {ACCENT}; font-weight: bold;")
+        self.chk_enable_resolution.setChecked(False)
+        self.chk_enable_resolution.toggled.connect(self._on_resolution_flag_toggled)
+        lay.addWidget(self.chk_enable_resolution)
 
         self.opt_sigma_ini = ToggleDoubleRow(
             "σ_ini", suffix="km/s", max_val=999999, decimals=2
@@ -490,7 +497,18 @@ class MainWindow(QMainWindow):
         )
         lay.addWidget(self.opt_r_fin)
 
+        self._resolution_rows = (
+            self.opt_sigma_ini, self.opt_sigma_fin,
+            self.opt_fwhm_ini, self.opt_fwhm_fin,
+            self.opt_r_ini, self.opt_r_fin,
+        )
+        self._on_resolution_flag_toggled(False)
+
         self.panels_layout.addWidget(self.grp_resolution)
+
+    def _on_resolution_flag_toggled(self, checked):
+        for row in self._resolution_rows:
+            row.setEnabled(checked)
 
     # -----------------------------------------------------------------
     # Panel 3: Options & Corrections
@@ -501,9 +519,16 @@ class MainWindow(QMainWindow):
         lay = QVBoxLayout(self.grp_options)
         lay.setSpacing(8)
 
+        self.chk_enable_redshift = QCheckBox("  Enable Redshift Correction")
+        self.chk_enable_redshift.setStyleSheet(f"color: {ACCENT}; font-weight: bold;")
+        self.chk_enable_redshift.setChecked(False)
+        self.chk_enable_redshift.toggled.connect(self._on_redshift_flag_toggled)
+        lay.addWidget(self.chk_enable_redshift)
+
         self.opt_z = ToggleDoubleRow(
             "Redshift (z)", suffix="", max_val=20.0, decimals=8, default_val=0.0
         )
+        self.opt_z.setEnabled(False)
         lay.addWidget(self.opt_z)
 
         self.opt_simulate = ToggleIntRow(
@@ -530,6 +555,9 @@ class MainWindow(QMainWindow):
         lay.addWidget(self.opt_compute_idx)
 
         self.panels_layout.addWidget(self.grp_options)
+
+    def _on_redshift_flag_toggled(self, checked):
+        self.opt_z.setEnabled(checked)
 
     # -----------------------------------------------------------------
     # Panel 4: Plots & Output
@@ -730,10 +758,11 @@ class MainWindow(QMainWindow):
             return
 
         # Validate resolution parameters
-        res_error = self._validate_resolution_settings()
-        if res_error:
-            QMessageBox.critical(self, "Invalid Resolution Parameters", res_error)
-            return
+        if self.chk_enable_resolution.isChecked():
+            res_error = self._validate_resolution_settings()
+            if res_error:
+                QMessageBox.critical(self, "Invalid Resolution Parameters", res_error)
+                return
 
         index_defs = self.combo_idx_defs.currentData()
         output_file = self.pick_output.text() or "measurements.txt"
@@ -745,24 +774,27 @@ class MainWindow(QMainWindow):
             "file_extension": file_ext,
             "IndexDefs": index_defs,
             "output_file": output_file,
+            "do_resolution": self.chk_enable_resolution.isChecked(),
+            "do_redshift": self.chk_enable_redshift.isChecked(),
         }
 
-        # Resolution
-        if self.opt_sigma_ini.is_enabled():
-            kwargs["sigma_ini"] = self.opt_sigma_ini.value()
-        if self.opt_sigma_fin.is_enabled():
-            kwargs["sigma_fin"] = self.opt_sigma_fin.value()
-        if self.opt_fwhm_ini.is_enabled():
-            kwargs["FWHM_ini"] = self.opt_fwhm_ini.value()
-        if self.opt_fwhm_fin.is_enabled():
-            kwargs["FWHM_fin"] = self.opt_fwhm_fin.value()
-        if self.opt_r_ini.is_enabled():
-            kwargs["R_ini"] = self.opt_r_ini.value()
-        if self.opt_r_fin.is_enabled():
-            kwargs["R_fin"] = self.opt_r_fin.value()
+        # Resolution (only meaningful when "Enable Resolution Correction" is checked)
+        if self.chk_enable_resolution.isChecked():
+            if self.opt_sigma_ini.is_enabled():
+                kwargs["sigma_ini"] = self.opt_sigma_ini.value()
+            if self.opt_sigma_fin.is_enabled():
+                kwargs["sigma_fin"] = self.opt_sigma_fin.value()
+            if self.opt_fwhm_ini.is_enabled():
+                kwargs["FWHM_ini"] = self.opt_fwhm_ini.value()
+            if self.opt_fwhm_fin.is_enabled():
+                kwargs["FWHM_fin"] = self.opt_fwhm_fin.value()
+            if self.opt_r_ini.is_enabled():
+                kwargs["R_ini"] = self.opt_r_ini.value()
+            if self.opt_r_fin.is_enabled():
+                kwargs["R_fin"] = self.opt_r_fin.value()
 
-        # Options
-        if self.opt_z.is_enabled():
+        # Options (redshift only meaningful when "Enable Redshift Correction" is checked)
+        if self.chk_enable_redshift.isChecked() and self.opt_z.is_enabled():
             kwargs["z"] = self.opt_z.value()
         if self.opt_simulate.is_enabled():
             kwargs["simulate"] = self.opt_simulate.value()
@@ -874,11 +906,13 @@ class MainWindow(QMainWindow):
         cfg["output_file"] = self.pick_output.text()
 
         # Resolution toggles
+        cfg["enable_resolution"] = self.chk_enable_resolution.isChecked()
         for name in ("sigma_ini", "sigma_fin", "fwhm_ini", "fwhm_fin", "r_ini", "r_fin"):
             w = getattr(self, f"opt_{name}")
             cfg[name] = {"enabled": w.is_enabled(), "value": w.spinbox.value()}
 
         # Options
+        cfg["enable_redshift"] = self.chk_enable_redshift.isChecked()
         cfg["z"] = {"enabled": self.opt_z.is_enabled(), "value": self.opt_z.spinbox.value()}
         cfg["simulate"] = {"enabled": self.opt_simulate.is_enabled(), "value": self.opt_simulate.spinbox.value()}
         cfg["error"] = self.chk_error.isChecked()
@@ -923,12 +957,14 @@ class MainWindow(QMainWindow):
                 self.combo_idx_defs.setCurrentIndex(self.combo_idx_defs.count() - 1)
 
         # Resolution
+        self.chk_enable_resolution.setChecked(cfg.get("enable_resolution", False))
         for name in ("sigma_ini", "sigma_fin", "fwhm_ini", "fwhm_fin", "r_ini", "r_fin"):
             w = getattr(self, f"opt_{name}")
             d = cfg.get(name, {})
             w.set_state(d.get("enabled", False), d.get("value"))
 
         # Options
+        self.chk_enable_redshift.setChecked(cfg.get("enable_redshift", False))
         d = cfg.get("z", {})
         self.opt_z.set_state(d.get("enabled", False), d.get("value"))
         d = cfg.get("simulate", {})
