@@ -32,6 +32,8 @@ from .custom_widgets import (
     FilePickerRow, ToggleDoubleRow, ToggleIntRow,
     ToggleTextRow, ToggleFilePickerRow, LogConsole
 )
+from .index_selection_dialog import IndexSelectionDialog
+from .plot_dialog import PlotDialog
 
 
 # ---------------------------------------------------------------------------
@@ -116,6 +118,7 @@ class MainWindow(QMainWindow):
 
         self.worker = None
         self.result_df = None
+        self.custom_idx_definitions = None  # set when the user customizes via "Select Indices…"
 
         self._init_ui()
 
@@ -372,6 +375,7 @@ class MainWindow(QMainWindow):
         self.combo_idx_defs.setEditable(False)
         self.combo_idx_defs.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self._populate_idx_combo()
+        self.combo_idx_defs.currentIndexChanged.connect(self._on_idx_defs_changed)
         idx_layout.addWidget(self.combo_idx_defs, 1)
 
         btn_custom_idx = QPushButton("Custom…")
@@ -380,13 +384,23 @@ class MainWindow(QMainWindow):
         btn_custom_idx.clicked.connect(self._on_custom_idx)
         idx_layout.addWidget(btn_custom_idx)
 
+        btn_select_idx = QPushButton("Select Indices…")
+        btn_select_idx.setFixedWidth(120)
+        btn_select_idx.setCursor(Qt.PointingHandCursor)
+        btn_select_idx.clicked.connect(self._on_select_indices)
+        idx_layout.addWidget(btn_select_idx)
+
         lay.addWidget(idx_row)
 
+        self.lbl_idx_selection = QLabel("")
+        self.lbl_idx_selection.setStyleSheet(f"color: {ACCENT}; font-size: 11px;")
+        lay.addWidget(self.lbl_idx_selection)
+
         self.pick_output = FilePickerRow(
-            "Output File:", placeholder="measurements.txt",
-            file_filter="Text Files (*.txt *.dat *.csv);;All Files (*)"
+            "Output File:", placeholder="measurements.csv (CSV format)",
+            file_filter="CSV Files (*.csv);;Text Files (*.txt *.dat);;All Files (*)"
         )
-        self.pick_output.set_text("measurements.txt")
+        self.pick_output.set_text("measurements.csv")
         lay.addWidget(self.pick_output)
 
         self.panels_layout.addWidget(self.grp_input)
@@ -442,6 +456,66 @@ class MainWindow(QMainWindow):
             else:
                 self.combo_idx_defs.addItem(name, path)
                 self.combo_idx_defs.setCurrentIndex(self.combo_idx_defs.count() - 1)
+
+    def _on_idx_defs_changed(self):
+        # A previously customized selection belonged to a different .ind file.
+        self.custom_idx_definitions = None
+        self.lbl_idx_selection.setText("")
+
+    def _current_spectra_file_list(self):
+        """
+        Resolve (files, path_to_files) for the currently configured spectra
+        source, or return (None, None) with a warning dialog if invalid.
+        """
+        from pacce.pacce_wapper import list_spectrum_files
+
+        is_table_mode = self.radio_table_mode.isChecked()
+        filename = self.pick_spectrum_list.text() if is_table_mode else None
+        file_ext = self.combo_extension.currentText().strip() if not is_table_mode else None
+        path_to_files = self.pick_spectra_dir.text()
+
+        if is_table_mode and not filename:
+            QMessageBox.warning(self, "Missing Input", "Spectrum list file is required in Table mode.")
+            return None, None
+        if not path_to_files or not os.path.isdir(path_to_files):
+            QMessageBox.warning(self, "Missing Input", "A valid spectra directory is required.")
+            return None, None
+
+        try:
+            files = list_spectrum_files(filename, path_to_files, file_ext)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Could not list spectrum files: {e}")
+            return None, None
+        if not files:
+            QMessageBox.warning(self, "No Spectra Found", "No spectrum files matched the current configuration.")
+            return None, None
+        return files, path_to_files
+
+    def _on_select_indices(self):
+        index_defs = self.combo_idx_defs.currentData()
+        if not index_defs:
+            QMessageBox.warning(self, "Missing Input", "Select an Index Definitions file first.")
+            return
+
+        from pacce.pacce_wapper import read_idx_defs, get_spectra_wavelength_range
+
+        try:
+            idx_definitions = read_idx_defs(index_defs)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Could not read index definitions: {e}")
+            return
+
+        wave_min = wave_max = None
+        files, path_to_files = self._current_spectra_file_list()
+        if files is not None:
+            wave_min, wave_max = get_spectra_wavelength_range(path_to_files, files)
+
+        dlg = IndexSelectionDialog(idx_definitions, wave_min, wave_max, parent=self)
+        if dlg.exec_() == dlg.Accepted:
+            self.custom_idx_definitions = dlg.get_filtered_definitions()
+            n_sel = len(self.custom_idx_definitions)
+            n_total = len(idx_definitions)
+            self.lbl_idx_selection.setText(f"Custom selection: {n_sel}/{n_total} indices active")
 
     # -----------------------------------------------------------------
     # Panel 2: Spectral Resolution
@@ -640,6 +714,16 @@ class MainWindow(QMainWindow):
         )
         hdr_lay.addWidget(lbl_res)
         hdr_lay.addStretch()
+        self.btn_plot = QPushButton("Plot…")
+        self.btn_plot.setFixedHeight(28)
+        self.btn_plot.setStyleSheet(
+            "font-size: 11px; padding: 4px 10px;"
+        )
+        self.btn_plot.setCursor(Qt.PointingHandCursor)
+        self.btn_plot.setEnabled(False)
+        self.btn_plot.clicked.connect(self._on_plot_results)
+        hdr_lay.addWidget(self.btn_plot)
+
         self.btn_export = QPushButton("Export CSV")
         self.btn_export.setFixedHeight(28)
         self.btn_export.setStyleSheet(
@@ -674,6 +758,21 @@ class MainWindow(QMainWindow):
         """
         c_kms = 299792.458
         ref_wave = 5000.0  # reference wavelength in Angstroms for equivalence comparison
+
+        # Resolution correction is enabled, so at least one "ini" and one "fin"
+        # value (> 0) must be provided — otherwise there is nothing to convolve.
+        if not (self.opt_fwhm_ini.is_enabled() or self.opt_sigma_ini.is_enabled()
+                or self.opt_r_ini.is_enabled()):
+            return (
+                "Enable Resolution Correction is checked, but no initial resolution "
+                "was set: enable at least one of σ_ini, FWHM_ini or R_ini with a value > 0."
+            )
+        if not (self.opt_fwhm_fin.is_enabled() or self.opt_sigma_fin.is_enabled()
+                or self.opt_r_fin.is_enabled()):
+            return (
+                "Enable Resolution Correction is checked, but no target resolution "
+                "was set: enable at least one of σ_fin, FWHM_fin or R_fin with a value > 0."
+            )
 
         # Get initial equivalent FWHM (A)
         fwhm_ini = None
@@ -765,14 +864,50 @@ class MainWindow(QMainWindow):
                 return
 
         index_defs = self.combo_idx_defs.currentData()
-        output_file = self.pick_output.text() or "measurements.txt"
+        output_file = self.pick_output.text() or "measurements.csv"
+
+        # Resolve which indices to run: a manual "Select Indices…" choice takes
+        # precedence; otherwise auto-exclude indices whose Line Limits fall
+        # outside the batch's wavelength coverage, confirmed once for the run.
+        from pacce.pacce_wapper import read_idx_defs, list_spectrum_files, get_spectra_wavelength_range, filter_idx_by_range
+
+        if self.custom_idx_definitions is not None:
+            final_idx_definitions = self.custom_idx_definitions
+        else:
+            try:
+                base_idx_definitions = read_idx_defs(index_defs)
+                files = list_spectrum_files(filename, path_to_files, file_ext)
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Could not read index definitions or spectra: {e}")
+                return
+
+            final_idx_definitions = base_idx_definitions
+            wave_min, wave_max = get_spectra_wavelength_range(path_to_files, files)
+            if wave_min is not None:
+                in_range = filter_idx_by_range(base_idx_definitions, wave_min, wave_max)
+                if not in_range.all():
+                    excluded_names = [str(n) for n in base_idx_definitions['name'][~in_range]]
+                    msg = (
+                        f"The spectra in this batch cover {wave_min:.1f} - {wave_max:.1f} Å.\n\n"
+                        f"{len(excluded_names)} of {len(base_idx_definitions)} indices have Line "
+                        f"Limits outside this range and will be EXCLUDED from this run:\n\n"
+                        + ", ".join(excluded_names) +
+                        "\n\nUse \"Select Indices…\" beforehand if you want to override this."
+                    )
+                    reply = QMessageBox.question(
+                        self, "Indices Out of Range", msg,
+                        QMessageBox.Ok | QMessageBox.Cancel, QMessageBox.Ok
+                    )
+                    if reply != QMessageBox.Ok:
+                        return
+                    final_idx_definitions = base_idx_definitions[in_range]
 
         # Build kwargs for pacce()
         kwargs = {
             "filename": filename,
             "path_to_files": path_to_files,
             "file_extension": file_ext,
-            "IndexDefs": index_defs,
+            "IndexDefs": final_idx_definitions,
             "output_file": output_file,
             "do_resolution": self.chk_enable_resolution.isChecked(),
             "do_redshift": self.chk_enable_redshift.isChecked(),
@@ -826,6 +961,7 @@ class MainWindow(QMainWindow):
         self.results_table.setRowCount(0)
         self.results_table.setColumnCount(0)
         self.btn_export.setEnabled(False)
+        self.btn_plot.setEnabled(False)
         self.result_df = None
 
         # Start worker
@@ -852,6 +988,7 @@ class MainWindow(QMainWindow):
             self.result_df = result
             self._populate_table(result)
             self.btn_export.setEnabled(True)
+            self.btn_plot.setEnabled(True)
             self.log_console.append_log("\n✅ PACCE finished successfully.")
             self.statusBar().showMessage("Done — Results available in the preview table.")
         else:
@@ -888,6 +1025,12 @@ class MainWindow(QMainWindow):
         if path:
             self.result_df.to_csv(path, index=False)
             self.statusBar().showMessage(f"Results exported to {path}")
+
+    def _on_plot_results(self):
+        if self.result_df is None:
+            return
+        dlg = PlotDialog(self.result_df, parent=self)
+        dlg.exec_()
 
     # -----------------------------------------------------------------
     # Save / Load Config
@@ -940,7 +1083,7 @@ class MainWindow(QMainWindow):
         self.combo_extension.setCurrentText(cfg.get("file_extension", ".txt"))
         self.pick_spectrum_list.set_text(cfg.get("spectrum_list", ""))
         self.pick_spectra_dir.set_text(cfg.get("spectra_dir", ""))
-        self.pick_output.set_text(cfg.get("output_file", "measurements.txt"))
+        self.pick_output.set_text(cfg.get("output_file", "measurements.csv"))
 
         # Restore idx defs combo
         idx_path = cfg.get("idx_defs_path")

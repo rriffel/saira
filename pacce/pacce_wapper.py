@@ -7,6 +7,101 @@ import pandas as pd
 
 from pacce.PacceFunctions import *
 
+
+def _has_positive(value):
+    """True if value is not None and can be interpreted as a number > 0."""
+    try:
+        return value is not None and float(value) > 0
+    except (TypeError, ValueError):
+        return False
+
+
+def _col_has_positive(col):
+    """True if a table column has at least one numeric value > 0."""
+    try:
+        return bool((pd.to_numeric(col, errors='coerce') > 0).any())
+    except Exception:
+        return False
+
+
+def _load_idx_definitions(index_defs):
+    """Accept either a path to an .ind file or an already-loaded structured array."""
+    if isinstance(index_defs, np.ndarray) and index_defs.dtype.names is not None:
+        return index_defs
+    return read_idx_defs(index_defs)
+
+
+def list_spectrum_files(filename=None, path_to_files='./', file_extension=None):
+    """
+    Resolve the list of spectrum file names for a run, using the same logic
+    pacce() uses internally: a table with a 'file' column if given, otherwise
+    directory discovery by extension/pattern.
+    """
+    if filename is not None and os.path.isfile(filename):
+        original_input = pd.read_table(filename)
+        return list(original_input['file'])
+
+    ext = file_extension or '.txt'
+    if not os.path.isdir(path_to_files):
+        raise FileNotFoundError(f"Spectra directory not found: {path_to_files}")
+
+    pattern = ext if ('*' in ext or '?' in ext) else f"*{ext if ext.startswith('.') else '.' + ext}"
+    matched_files = sorted([
+        f for f in os.listdir(path_to_files)
+        if fnmatch.fnmatch(f, pattern) and os.path.isfile(os.path.join(path_to_files, f))
+    ])
+    return matched_files
+
+
+def get_spectra_wavelength_range(path_to_files, files):
+    """
+    Scan a batch of spectrum files and return (global_min, global_max): the
+    lowest wavelength found in any spectrum and the highest wavelength found
+    in any spectrum (i.e. the union of wavelength coverage across the batch).
+    Returns (None, None) if no file could be read.
+    """
+    mins, maxs = [], []
+    for f in files:
+        try:
+            wave = np.genfromtxt(os.path.join(path_to_files, f), usecols=(0,), unpack=True)
+            wave = np.atleast_1d(wave)
+            if wave.size:
+                mins.append(float(np.nanmin(wave)))
+                maxs.append(float(np.nanmax(wave)))
+        except Exception:
+            continue
+    if not mins:
+        return None, None
+    return min(mins), max(maxs)
+
+
+def filter_idx_by_range(idx_definitions, wave_min, wave_max):
+    """
+    Boolean mask (True = keep) for the indices whose Line Limits (the 'defs'
+    field) fall entirely within [wave_min, wave_max].
+    """
+    return np.array([
+        (line['defs'][0] >= wave_min) and (line['defs'][1] <= wave_max)
+        for line in idx_definitions
+    ])
+
+
+def write_idx_defs(idx_definitions, path, mask=None):
+    """Write index definitions (optionally filtered by a boolean mask) to a .ind file."""
+    if mask is None:
+        mask = np.ones(len(idx_definitions), dtype=bool)
+    with open(path, 'w') as f:
+        f.write('# ID | Line Limits | continuum | ref\n')
+        for line, keep in zip(idx_definitions, mask):
+            if not keep:
+                continue
+            defs_str = '-'.join(f'{v:.4f}' for v in line['defs'])
+            conts = line['conts']
+            pairs = [f'{conts[i]:.4f}-{conts[i+1]:.4f}' for i in range(0, len(conts), 2)]
+            conts_str = ','.join(pairs)
+            f.write(f"{line['name']} | {defs_str} | {conts_str} | {line['ref']}\n")
+
+
 def pacce(filename = None,
           path_to_files = './',
           IndexDefs = None,
@@ -62,64 +157,84 @@ def pacce(filename = None,
             os.makedirs(log_dir)
         sys.stdout = open(print_log, 'w')
 
-    idx_definitions = read_idx_defs(IndexDefs) # loading idx definitions
+    idx_definitions = _load_idx_definitions(IndexDefs) # loading idx definitions
 
     # Determine input spectrum files: from table or directory discovery
     if filename is not None and os.path.isfile(filename):
         original_input = pd.read_table(filename)
     else:
         ext = file_extension or '.txt'
-        if not os.path.isdir(path_to_files):
-            raise FileNotFoundError(f"Spectra directory not found: {path_to_files}")
-        
-        pattern = ext if ('*' in ext or '?' in ext) else f"*{ext if ext.startswith('.') else '.' + ext}"
-        matched_files = sorted([
-            f for f in os.listdir(path_to_files)
-            if fnmatch.fnmatch(f, pattern) and os.path.isfile(os.path.join(path_to_files, f))
-        ])
-        
+        matched_files = list_spectrum_files(filename, path_to_files, file_extension)
+
         if not matched_files:
             raise FileNotFoundError(
-                f"No spectrum files found matching '{pattern}' in directory '{path_to_files}'"
+                f"No spectrum files found matching '{ext}' in directory '{path_to_files}'"
             )
-        
-        print(f"Found {len(matched_files)} spectra matching '{pattern}' in '{path_to_files}'")
+
+        print(f"Found {len(matched_files)} spectra matching '{ext}' in '{path_to_files}'")
         original_input = pd.DataFrame({'file': matched_files})
-    
+
     file_table =  original_input.copy()
     # check if in the table there is either FWHM (A), sigma (km/s) and R (lambda/d_lambda)
     if do_resolution:
         if 'FWHM' not in file_table:
-            print('FWHM not found in table')
             file_table['FWHM'] = FWHM_ini
-        else:
-            print('FWHM found in table')
         if 'sigma' not in file_table:
-            print('sigma not found in table')
             file_table['sigma'] = sigma_ini
-        else:
-            print('sigma found in table')
         if 'R' not in file_table:
-            print('R not found in table')
             file_table['R'] = R_ini
-        else:
-            print('R found in table')
     else:
-        print('Resolution correction disabled')
         file_table['FWHM'] = None
         file_table['sigma'] = None
         file_table['R'] = None
 
     if do_redshift:
         if 'z' not in file_table:
-            print('z not found in table')
             file_table['z'] = z
-        else:
-            print('z found in table')
     else:
-        print('Redshift correction disabled')
         file_table['z'] = None
-    
+
+    # ------------------------------------------------------------------
+    # Run configuration summary: printed first so it's the first thing
+    # visible in the log, whether it goes to a file or to the GUI console.
+    # ------------------------------------------------------------------
+    print('=' * 60)
+    print('PACCE run configuration')
+    print('=' * 60)
+    print(f'Resolution correction: {do_resolution}')
+    if do_resolution:
+        has_ini = (_col_has_positive(file_table['FWHM'])
+                   or _col_has_positive(file_table['sigma'])
+                   or _col_has_positive(file_table['R']))
+        has_fin = _has_positive(FWHM_fin) or _has_positive(sigma_fin) or _has_positive(R_fin)
+        if not (has_ini and has_fin):
+            raise ValueError(
+                "Resolution correction is enabled but incomplete: a value > 0 is required "
+                "in at least one of sigma_ini/FWHM_ini/R_ini (as a parameter or a table "
+                "column) AND in at least one of sigma_fin/FWHM_fin/R_fin."
+            )
+        print(f'  sigma_ini={sigma_ini}  FWHM_ini={FWHM_ini}  R_ini={R_ini}')
+        print(f'  sigma_fin={sigma_fin}  FWHM_fin={FWHM_fin}  R_fin={R_fin}')
+
+    print(f'Redshift correction: {do_redshift}')
+    if do_redshift:
+        has_z = ('z' in file_table.columns and file_table['z'].notna().any()) or (z is not None)
+        if not has_z:
+            raise ValueError(
+                "Redshift correction is enabled but no z value was provided "
+                "(as a parameter or a table column)."
+            )
+        print(f'  z={z}')
+
+    print(f'Output file: {output_file} (CSV)')
+    if print_log is not None:
+        print(f'Log file: {print_log}')
+    if path_singleind_plots is not None:
+        print(f'Individual index plots directory: {path_singleind_plots}')
+    if AllIndicesPlot is not None:
+        print(f'All-indices plot directory: {allindices_plot_path}  (filename: {AllIndicesPlot})')
+    print('=' * 60)
+
     # create empty array to add the info from the eqw function
     error_names = np.array(['e_'+name for name in idx_definitions['name']])
     header = np.dstack((idx_definitions['name'], error_names)).flatten()
@@ -209,9 +324,8 @@ def pacce(filename = None,
     output_dir = os.path.dirname(output_file)
     if output_dir and not os.path.isdir(output_dir):
         os.makedirs(output_dir)
-    sourceFile = open(output_file, 'w')
-    print(original_input.to_string(index=False), file = sourceFile)
-    sourceFile.close()
+    original_input.to_csv(output_file, index=False)
+    print(f'Measurements saved to {output_file} (CSV)')
 
     sys.stdout = term
     return original_input

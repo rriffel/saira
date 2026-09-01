@@ -1,0 +1,70 @@
+{
+  "input_mode": "extension",
+  "file_extension": ".spec",
+  "spectrum_list": "",
+  "spectra_dir": "/home/riffel/Dropbox/programas/Develp/pacce/pacce/examples/testfiles",
+  "idx_defs_index": 0,
+  "idx_defs_text": "Riffel_2019_defs.ind",
+  "idx_defs_path": "/home/riffel/Dropbox/programas/Develp/pacce/pacce/suport_files/Riffel_2019_defs.ind",
+  "output_file": "measurements.csv",
+  "enable_resolution": false,
+  "sigma_ini": {
+    "enabled": false,
+    "value": 0.0
+  },
+  "sigma_fin": {
+    "enabled": false,
+    "value": 0.0
+  },
+  "fwhm_ini": {
+    "enabled": false,
+    "value": 0.0
+  },
+  "fwhm_fin": {
+    "enabled": false,
+    "value": 0.0
+  },
+  "r_ini": {
+    "enabled": false,
+    "value": 0.0
+  },
+  "r_fin": {
+    "enabled": false,
+    "value": 0.0
+  },
+  "enable_redshift": false,
+  "z": {
+    "enabled": false,
+    "value": 0.0
+  },
+  "simulate": {
+    "enabled": false,
+    "value": 100
+  },
+  "error": false,
+  "neg_to_zero": false,
+  "a_to_mag": {
+    "enabled": false,
+    "value": ""
+  },
+  "compute_idx": {
+    "enabled": false,
+    "value": ""
+  },
+  "single_plots": {
+    "enabled": true,
+    "value": "/home/riffel/Dropbox/programas/Develp/pacce/pacce/examples/testfiles/figures"
+  },
+  "all_plot": {
+    "enabled": true,
+    "value": "all_indices.png"
+  },
+  "all_plot_dir": {
+    "enabled": true,
+    "value": "/home/riffel/Dropbox/programas/Develp/pacce/pacce/examples/testfiles/figures"
+  },
+  "log_file": {
+    "enabled": true,
+    "value": "pacce.log"
+  }
+}

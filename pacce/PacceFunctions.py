@@ -273,10 +273,7 @@ def plotIndSingle(line,
             cont_f,
             line_l,
             line_f,
-            name_fig,
             ax,
-            fig,
-            lastplot
             ):
     if (np.append(FWHM_ini,FWHM_fin) != None).all():
         ax.plot(wave[(wave >= np.min(line['conts'])) & (wave <=np.max(line['conts']))],
@@ -310,11 +307,6 @@ def plotIndSingle(line,
     ax.set_xlabel(r'$\lambda$')
     ax.set_ylabel(r'Flux')
     ax.set_title(line['name'])
-    if lastplot:
-        print('\n',50*'*','\n',name_fig,'With all plots saved' ,'\n')
-        fig.tight_layout()
-        fig.savefig(name_fig, format='png')
-        plt.close(fig)
 
 
 
@@ -475,8 +467,6 @@ def eqw(wave,
                     line_f=line_f
                     )
                 if AllIndicesPlot is not None:
-                    if num_plots-1 == plt_pos: lastplot=True
-                    if num_plots-1 != plt_pos: lastplot=False
                     plotIndSingle(line=line,
                     wave=wave,
                     flux=flux,
@@ -487,10 +477,7 @@ def eqw(wave,
                     cont_f=cont_f,
                     line_l=line_l,
                     line_f=line_f,
-                    name_fig=AllIndicesPlot,
                     ax=axes.flatten()[plt_pos],
-                    fig=fig,
-                    lastplot=lastplot
                     )
                     plt_pos += 1
 
@@ -560,8 +547,6 @@ def eqw(wave,
                     line_f=line_f
                     )
                 if AllIndicesPlot is not None:
-                    if num_plots-1 == plt_pos: lastplot=True
-                    if num_plots-1 != plt_pos: lastplot=False
                     plotIndSingle(line=line,
                     wave=wave,
                     flux=flux,
@@ -572,10 +557,7 @@ def eqw(wave,
                     cont_f=cont_f,
                     line_l=line_l,
                     line_f=line_f,
-                    name_fig=AllIndicesPlot,
                     ax=axes.flatten()[plt_pos],
-                    fig=fig,
-                    lastplot=lastplot
                     )
                     plt_pos += 1
 
@@ -625,5 +607,13 @@ def eqw(wave,
                 head_measurements.append(line['name'])
                 measurements.append(np.nan)
                 head_measurements.append('e_'+line['name'])
+
+    # save the combined all-indices figure regardless of whether individual
+    # indices failed above (a failure must not prevent the figure from being saved)
+    if AllIndicesPlot is not None:
+        fig.tight_layout()
+        fig.savefig(AllIndicesPlot, format='png')
+        plt.close(fig)
+        print(f'All-indices figure saved: {AllIndicesPlot}')
 
     return head_measurements, measurements
