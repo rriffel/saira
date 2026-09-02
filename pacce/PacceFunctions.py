@@ -508,8 +508,10 @@ def eqw(wave,
                         SN=np.mean(np.divide(S,N))
                         dl = line_l[-1]-line_l[0]
                         eEW = np.sqrt((2*dl-EW)*(dl-EW))/SN
-                        # error bar estimation based on https://arxiv.org/pdf/astro-ph/0606341.pdf
-                        #changed their equation (7) to depend only on EQW, d_LAMBDA and the S/N
+                        # error bar estimation based on Vollmann & Eversberg (2006),
+                        # Astron. Nachr., DOI 10.1002/asna.2006
+                        # https://arxiv.org/pdf/astro-ph/0606341.pdf
+                        # (changed their equation (7) to depend only on EQW, d_LAMBDA and the S/N)
                 if negative_Ew_to_zero:
                     if float(EW) < 0:
                         EW = 0.00

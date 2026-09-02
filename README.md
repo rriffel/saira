@@ -111,9 +111,9 @@ pacce.gui()
 - **Input Modes**:
   - **Table / File List**: Load a pre-defined table with spectrum filenames and per-spectrum properties (`sigma`, `FWHM`, `R`, `z`).
   - **Auto-discover by Extension**: Select a directory and specify a file extension/pattern (e.g. `.txt`, `.dat`, `*.spec`, `*`). The GUI automatically discovers all matching files and displays a live spectrum count.
-- **Spectral Resolution Management**: An **"Enable Resolution Correction"** master checkbox gates the whole feature (off by default); when on, freely specify initial and final resolutions in $\sigma$ (km/s), $\text{FWHM}$ (Å), or $R$ ($\lambda/\Delta\lambda$).
-- **Physical Validation**: Built-in protection that immediately checks and blocks unphysical convolutions (e.g., attempting to convolve to a higher resolution where $\text{FWHM}_{\text{fin}} < \text{FWHM}_{\text{ini}}$, or enabling resolution correction without at least one initial *and* one final value set).
-- **Options & Corrections**: An **"Enable Redshift Correction"** master checkbox gates $z$; also includes Monte Carlo error simulations ($N$), Å-to-magnitude conversions, error propagation, and composite index formulas.
+- **Redshift & Resolution (Step 2)**: An **"Enable Redshift Correction"** master checkbox gates $z$, applied first; below it, an **"Enable Resolution Changes"** master checkbox gates $\sigma$ (km/s), $\text{FWHM}$ (Å), or $R$ ($\lambda/\Delta\lambda$) convolution, applied after the redshift correction.
+- **Physical Validation**: Built-in protection that immediately checks and blocks unphysical convolutions (e.g., attempting to convolve to a higher resolution where $\text{FWHM}_{\text{fin}} < \text{FWHM}_{\text{ini}}$, or enabling resolution changes without at least one initial *and* one final value set).
+- **Other Settings (Step 3)**: An **Error Estimation** choice between "Don't compute errors", the **Equation** formalism ([Vollmann & Eversberg 2006](https://doi.org/10.1002/asna.2006)), or **Monte Carlo** ($N$ iterations); plus Å-to-magnitude conversions, negative-EW-to-zero, and composite index formulas.
 - **Index Selection**: A **"Select Indices…"** dialog lists every index in the chosen `.ind` file with a checkbox, lets you save a custom subset as a new `.ind` file, and automatically unchecks (with a warning if you try to re-check) any index whose *Line Limits* fall outside the wavelength range covered by the spectra you're about to process.
 - **Automatic Out-of-Range Check**: If you don't use "Select Indices…" yourself, clicking **Run** still scans the whole batch of spectra once, and — if any indices fall outside the covered range — shows a single confirmation listing exactly which ones will be excluded.
 - **Live Logging & Output Table**: Real-time console log (including a run-configuration summary: which corrections are active, with what values, and where every output file is saved) and an interactive results preview table with direct CSV export.
@@ -405,7 +405,7 @@ Once a run finishes, the **"Plot…"** button above the Results Preview table op
 
 PACCE supports two approaches for error estimation:
 
-1. **Analytical (default when error spectrum exists)**: Estimates errors from the S/N ratio in the feature and continuum bands using the formalism of [Cardiel et al. (2006)](https://arxiv.org/abs/astro-ph/0606341).
+1. **Equation (default when error spectrum exists)**: Estimates errors from the S/N ratio in the feature and continuum bands using the formalism of Vollmann & Eversberg (2006), Astronomische Nachrichten, DOI [10.1002/asna.2006](https://doi.org/10.1002/asna.2006).
 2. **Monte Carlo (`simulate=N`)**: Generates $N$ synthetic spectra from the observed spectrum and error array, re-measures the indices, and derives the uncertainty from the standard deviation.
 
 ---

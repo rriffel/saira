@@ -18,7 +18,7 @@ import pandas as pd
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QScrollArea, QGroupBox, QCheckBox, QRadioButton,
-    QTableWidget, QTableWidgetItem, QSplitter, QProgressBar,
+    QButtonGroup, QSpinBox, QTableWidget, QTableWidgetItem, QSplitter, QProgressBar,
     QFileDialog, QMessageBox, QSizePolicy, QComboBox, QSpacerItem
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
@@ -29,7 +29,7 @@ from .constants import (
     MUTED, BORDER_COLOR, SUCCESS_COLOR, DANGER_COLOR
 )
 from .custom_widgets import (
-    FilePickerRow, ToggleDoubleRow, ToggleIntRow,
+    FilePickerRow, ToggleDoubleRow,
     ToggleTextRow, ToggleFilePickerRow, LogConsole
 )
 from .index_selection_dialog import IndexSelectionDialog
@@ -214,8 +214,8 @@ class MainWindow(QMainWindow):
         self.nav_buttons = []
         sections = [
             ("1. Input Files", 0),
-            ("2. Spectral Resolution", 1),
-            ("3. Options & Corrections", 2),
+            ("2. Redshift & Resolution", 1),
+            ("3. Other Settings", 2),
             ("4. Plots & Output", 3),
         ]
         for text, idx in sections:
@@ -518,24 +518,38 @@ class MainWindow(QMainWindow):
             self.lbl_idx_selection.setText(f"Custom selection: {n_sel}/{n_total} indices active")
 
     # -----------------------------------------------------------------
-    # Panel 2: Spectral Resolution
+    # Panel 2: Redshift & Resolution
     # -----------------------------------------------------------------
 
     def _create_panel_resolution(self):
-        self.grp_resolution = QGroupBox("Spectral Resolution")
+        self.grp_resolution = QGroupBox("Redshift & Resolution")
         lay = QVBoxLayout(self.grp_resolution)
         lay.setSpacing(8)
 
-        info = QLabel(
-            "Resolution correction is optional. Initial values may also be "
-            "provided per-spectrum in the input table (columns: sigma, FWHM, R), "
-            "but they are only used when the flag below is enabled."
+        # Redshift correction is applied first, before any resolution changes.
+        self.chk_enable_redshift = QCheckBox("  Enable Redshift Correction")
+        self.chk_enable_redshift.setStyleSheet(f"color: {ACCENT}; font-weight: bold;")
+        self.chk_enable_redshift.setChecked(False)
+        self.chk_enable_redshift.toggled.connect(self._on_redshift_flag_toggled)
+        lay.addWidget(self.chk_enable_redshift)
+
+        self.opt_z = ToggleDoubleRow(
+            "Redshift (z)", suffix="", max_val=20.0, decimals=8, default_val=0.0
         )
-        info.setStyleSheet(f"color: {MUTED}; font-size: 12px; margin-bottom: 4px;")
+        self.opt_z.setEnabled(False)
+        lay.addWidget(self.opt_z)
+
+        info = QLabel(
+            "Resolution changes are optional and, when enabled, are applied after "
+            "the redshift correction above. Initial values may also be provided "
+            "per-spectrum in the input table (columns: sigma, FWHM, R), but they "
+            "are only used when the flag below is enabled."
+        )
+        info.setStyleSheet(f"color: {MUTED}; font-size: 12px; margin-top: 8px; margin-bottom: 4px;")
         info.setWordWrap(True)
         lay.addWidget(info)
 
-        self.chk_enable_resolution = QCheckBox("  Enable Resolution Correction")
+        self.chk_enable_resolution = QCheckBox("  Enable Resolution Changes")
         self.chk_enable_resolution.setStyleSheet(f"color: {ACCENT}; font-weight: bold;")
         self.chk_enable_resolution.setChecked(False)
         self.chk_enable_resolution.toggled.connect(self._on_resolution_flag_toggled)
@@ -580,39 +594,53 @@ class MainWindow(QMainWindow):
 
         self.panels_layout.addWidget(self.grp_resolution)
 
+    def _on_redshift_flag_toggled(self, checked):
+        self.opt_z.setEnabled(checked)
+
     def _on_resolution_flag_toggled(self, checked):
         for row in self._resolution_rows:
             row.setEnabled(checked)
 
     # -----------------------------------------------------------------
-    # Panel 3: Options & Corrections
+    # Panel 3: Other Settings
     # -----------------------------------------------------------------
 
     def _create_panel_options(self):
-        self.grp_options = QGroupBox("Options & Corrections")
+        self.grp_options = QGroupBox("Other Settings")
         lay = QVBoxLayout(self.grp_options)
         lay.setSpacing(8)
 
-        self.chk_enable_redshift = QCheckBox("  Enable Redshift Correction")
-        self.chk_enable_redshift.setStyleSheet(f"color: {ACCENT}; font-weight: bold;")
-        self.chk_enable_redshift.setChecked(False)
-        self.chk_enable_redshift.toggled.connect(self._on_redshift_flag_toggled)
-        lay.addWidget(self.chk_enable_redshift)
+        err_label = QLabel("Error Estimation:")
+        err_label.setStyleSheet("font-weight: 500;")
+        lay.addWidget(err_label)
 
-        self.opt_z = ToggleDoubleRow(
-            "Redshift (z)", suffix="", max_val=20.0, decimals=8, default_val=0.0
+        self.err_button_group = QButtonGroup(self)
+        self.radio_err_none = QRadioButton("  Don't compute errors")
+        self.radio_err_analytical = QRadioButton(
+            "  Equation (Vollmann and Eversberg, 2006, DOI 10.1002/asna.2006)"
         )
-        self.opt_z.setEnabled(False)
-        lay.addWidget(self.opt_z)
+        self.radio_err_montecarlo = QRadioButton("  Monte Carlo")
+        self.radio_err_none.setChecked(True)
+        for rb in (self.radio_err_none, self.radio_err_analytical, self.radio_err_montecarlo):
+            self.err_button_group.addButton(rb)
 
-        self.opt_simulate = ToggleIntRow(
-            "Monte Carlo (N)", suffix="iterations", min_val=1,
-            max_val=100000, default_val=100
-        )
-        lay.addWidget(self.opt_simulate)
+        lay.addWidget(self.radio_err_none)
+        lay.addWidget(self.radio_err_analytical)
 
-        self.chk_error = QCheckBox("  Use error spectrum (3rd column in spectra)")
-        lay.addWidget(self.chk_error)
+        mc_row = QWidget()
+        mc_lay = QHBoxLayout(mc_row)
+        mc_lay.setContentsMargins(0, 0, 0, 0)
+        mc_lay.setSpacing(8)
+        mc_lay.addWidget(self.radio_err_montecarlo)
+        self.spin_montecarlo_n = QSpinBox()
+        self.spin_montecarlo_n.setRange(1, 100000)
+        self.spin_montecarlo_n.setValue(100)
+        self.spin_montecarlo_n.setSuffix("  iterations")
+        self.spin_montecarlo_n.setEnabled(False)
+        self.spin_montecarlo_n.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        mc_lay.addWidget(self.spin_montecarlo_n, 1)
+        lay.addWidget(mc_row)
+        self.radio_err_montecarlo.toggled.connect(self.spin_montecarlo_n.setEnabled)
 
         self.chk_neg_to_zero = QCheckBox("  Set negative EW to zero")
         lay.addWidget(self.chk_neg_to_zero)
@@ -629,9 +657,6 @@ class MainWindow(QMainWindow):
         lay.addWidget(self.opt_compute_idx)
 
         self.panels_layout.addWidget(self.grp_options)
-
-    def _on_redshift_flag_toggled(self, checked):
-        self.opt_z.setEnabled(checked)
 
     # -----------------------------------------------------------------
     # Panel 4: Plots & Output
@@ -931,10 +956,13 @@ class MainWindow(QMainWindow):
         # Options (redshift only meaningful when "Enable Redshift Correction" is checked)
         if self.chk_enable_redshift.isChecked() and self.opt_z.is_enabled():
             kwargs["z"] = self.opt_z.value()
-        if self.opt_simulate.is_enabled():
-            kwargs["simulate"] = self.opt_simulate.value()
-        if self.chk_error.isChecked():
+
+        # Error Estimation: mutually exclusive Monte Carlo / analytical / none
+        if self.radio_err_montecarlo.isChecked():
+            kwargs["simulate"] = self.spin_montecarlo_n.value()
+        elif self.radio_err_analytical.isChecked():
             kwargs["error"] = True
+
         if self.chk_neg_to_zero.isChecked():
             kwargs["negative_Ew_to_zero"] = True
 
@@ -1029,7 +1057,8 @@ class MainWindow(QMainWindow):
     def _on_plot_results(self):
         if self.result_df is None:
             return
-        dlg = PlotDialog(self.result_df, parent=self)
+        label = os.path.basename(self.pick_output.text()) or "Main"
+        dlg = PlotDialog(self.result_df, parent=self, label=label)
         dlg.exec_()
 
     # -----------------------------------------------------------------
@@ -1057,8 +1086,15 @@ class MainWindow(QMainWindow):
         # Options
         cfg["enable_redshift"] = self.chk_enable_redshift.isChecked()
         cfg["z"] = {"enabled": self.opt_z.is_enabled(), "value": self.opt_z.spinbox.value()}
-        cfg["simulate"] = {"enabled": self.opt_simulate.is_enabled(), "value": self.opt_simulate.spinbox.value()}
-        cfg["error"] = self.chk_error.isChecked()
+
+        if self.radio_err_montecarlo.isChecked():
+            cfg["error_method"] = "montecarlo"
+        elif self.radio_err_analytical.isChecked():
+            cfg["error_method"] = "analytical"
+        else:
+            cfg["error_method"] = "none"
+        cfg["montecarlo_n"] = self.spin_montecarlo_n.value()
+
         cfg["neg_to_zero"] = self.chk_neg_to_zero.isChecked()
 
         cfg["a_to_mag"] = {"enabled": self.opt_a_to_mag.is_enabled(), "value": self.opt_a_to_mag.line_edit.text()}
@@ -1110,9 +1146,26 @@ class MainWindow(QMainWindow):
         self.chk_enable_redshift.setChecked(cfg.get("enable_redshift", False))
         d = cfg.get("z", {})
         self.opt_z.set_state(d.get("enabled", False), d.get("value"))
-        d = cfg.get("simulate", {})
-        self.opt_simulate.set_state(d.get("enabled", False), d.get("value"))
-        self.chk_error.setChecked(cfg.get("error", False))
+
+        if "error_method" in cfg:
+            method = cfg.get("error_method", "none")
+            montecarlo_n = cfg.get("montecarlo_n", 100)
+        else:
+            # Backward-compat with configs saved before the error-method radio buttons.
+            old_simulate = cfg.get("simulate", {})
+            if old_simulate.get("enabled"):
+                method = "montecarlo"
+            elif cfg.get("error", False):
+                method = "analytical"
+            else:
+                method = "none"
+            montecarlo_n = old_simulate.get("value", 100)
+        self.radio_err_montecarlo.setChecked(method == "montecarlo")
+        self.radio_err_analytical.setChecked(method == "analytical")
+        self.radio_err_none.setChecked(method == "none")
+        self.spin_montecarlo_n.setValue(montecarlo_n)
+        self.spin_montecarlo_n.setEnabled(method == "montecarlo")
+
         self.chk_neg_to_zero.setChecked(cfg.get("neg_to_zero", False))
 
         d = cfg.get("a_to_mag", {})
