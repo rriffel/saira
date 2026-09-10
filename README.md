@@ -401,33 +401,6 @@ Two notebooks in the repo walk through actual use cases:
 
 ---
 
-## Layout of the repo
-
-```
-pacce/
-├── pacce/
-│   ├── __init__.py              # exports pacce, PacceFunctions, and gui()
-│   ├── __main__.py              # lets you do `python -m pacce`
-│   ├── PacceFunctions.py        # the actual algorithms: eqw, varsmooth, plotting, etc.
-│   ├── pacce_wapper.py          # the pacce() wrapper - table & auto-discovery, index filtering
-│   ├── pacce_run.py             # example script
-│   ├── assets/                  # logo, screenshots
-│   ├── gui/                     # the PyQt5 interface
-│   │   ├── __init__.py
-│   │   ├── constants.py         # colors, stylesheet
-│   │   ├── custom_widgets.py    # the toggle rows, file pickers, console, etc.
-│   │   ├── main_gui.py          # the main window and background worker
-│   │   ├── index_selection_dialog.py  # "Select Indices…" window
-│   │   └── plot_dialog.py       # "Plot…" window
-│   ├── suport_files/            # bundled index definitions
-│   └── examples/                # SDSS spectra, MILES models, example tables
-├── Examples.ipynb
-├── Models_and_obs.ipynb
-├── pyproject.toml
-├── setup.py
-└── README.md
-```
-
 ---
 
 ## Citing this
