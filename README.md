@@ -8,59 +8,55 @@
   <strong>Python Algorithm to Compute Continuum and Equivalent widths</strong>
 </p>
 
-This is an updated and upgraded version of the PACCE code ([Riffel & Vale, 2011, Ap&SS, 334, 351](https://ui.adsabs.harvard.edu/abs/2011Ap%26SS.334..351R)) written in Python.
+PACCE measures spectral indices — equivalent widths and breaks — on 1-D spectra, and takes care of
+the boring-but-important bits along the way: broadening spectra to a common resolution, correcting
+for redshift, propagating errors. Everything comes back as a `pandas` DataFrame, so it drops straight
+into whatever Python workflow you're already using. Because observations and models can be degraded
+to the same resolution before measuring, you can compare the two directly instead of fighting with
+unit conversions and ad-hoc scripts every time.
 
-PACCE measures spectral indices (equivalent widths and breaks) while handling the most common corrections to spectra—broadening to a specific resolution, correcting for Doppler shift, etc.—and organizes the results in a `pandas` DataFrame that integrates naturally into Python workflows. This allows the same uniform treatment of both observations and models, degrading them to a common resolution and facilitating direct comparison.
-
-Now includes a modern **PyQt5 Graphical User Interface (GUI)** for interactive workflow configuration and batch processing.
+This is a modernized version of the original PACCE code ([Riffel & Vale 2011, Ap&SS, 334, 351](https://ui.adsabs.harvard.edu/abs/2011Ap%26SS.334..351R)).
+It now also ships with a PyQt5 desktop GUI, if you'd rather point-and-click than write a script.
 
 ---
 
-## Installation
+## Installing it
 
-It is recommended to run PACCE in an isolated Python environment (via **Conda** or **Python `venv`**).
+We'd recommend doing this inside an isolated environment (Conda or a plain `venv`) rather than your
+system Python — one less thing to worry about later.
 
-### 1. Creating a Virtual Environment
-
-#### Option A: Using Conda / Mamba (Recommended)
+### Conda / Mamba
 
 ```bash
-# Create a new environment with Python 3.12 (or >= 3.10)
 conda create -n pacce_env python=3.12 -y
-
-# Activate the environment
 conda activate pacce_env
 ```
 
-#### Option B: Using Python `venv`
+### Or a plain venv
 
 ```bash
-# Create a virtual environment
 python3 -m venv pacce_env
 
-# Activate the environment:
-# Linux / macOS:
+# Linux / macOS
 source pacce_env/bin/activate
 
-# Windows:
+# Windows
 pacce_env\Scripts\activate
 ```
 
----
+### Then install PACCE itself
 
-### 2. Installing PACCE
-
-Install directly from GitHub with `pip`:
+Straight from GitHub:
 
 ```bash
-# Public repository (or via HTTPS token)
+# public repo (or via an HTTPS token)
 pip install git+https://github.com/rriffel/pacce.git@paccegui
 
-# Private repository (via SSH key)
+# private repo, over SSH
 pip install git+ssh://git@github.com/rriffel/pacce.git@paccegui
 ```
 
-Or for local development:
+Or if you want to poke at the code / contribute, clone it and install in editable mode:
 
 ```bash
 git clone -b paccegui https://github.com/rriffel/pacce.git
@@ -68,104 +64,110 @@ cd pacce
 pip install -e .
 ```
 
-### Requirements
-
-- Python ≥ 3.10
-- [astropy](https://www.astropy.org/)
-- [pandas](https://pandas.pydata.org/)
-- [scipy](https://scipy.org/)
-- [matplotlib](https://matplotlib.org/)
-- [PyQt5](https://pypi.org/project/PyQt5/) (for the graphical interface)
-
-All dependencies are installed automatically by `pip`.
+Everything below needs Python 3.10+, plus `astropy`, `pandas`, `scipy`, `matplotlib`, and `PyQt5`
+(only needed for the GUI). `pip` pulls all of that in automatically — nothing to install by hand.
 
 ---
 
-## Graphical User Interface (GUI)
+## The GUI
 
-PACCE comes with a dedicated desktop graphical interface inspired by modern spectroscopy workflows.
+If you'd rather not write Python, there's a desktop interface for configuring and running PACCE
+interactively.
 
 <p align="center">
   <img src="pacce/assets/gui_screenshot.png" alt="PACCE GUI Main Screen" width="900">
 </p>
 
-### Launching the GUI
-
-You can launch the GUI using any of the following methods:
+Launch it any of these ways:
 
 ```bash
-# 1. Console command (after pip installation)
-pacce-gui
+pacce-gui          # console script, after pip install
+python -m pacce     # same thing, as a module
+```
 
-# 2. Python module execution
-python -m pacce
+or, from inside Python:
 
-# 3. From within Python
+```python
 import pacce
 pacce.gui()
 ```
 
-### Key GUI Features
+A quick tour of what's in there:
 
-- **Sidebar Navigation**: Quick jumping between configuration panels, instant execution, and configuration saving/loading.
-- **Input Modes**:
-  - **Table / File List**: Load a pre-defined table with spectrum filenames and per-spectrum properties (`sigma`, `FWHM`, `R`, `z`).
-  - **Auto-discover by Extension**: Select a directory and specify a file extension/pattern (e.g. `.txt`, `.dat`, `*.spec`, `*`). The GUI automatically discovers all matching files and displays a live spectrum count.
-- **Redshift & Resolution (Step 2)**: An **"Enable Redshift Correction"** master checkbox gates $z$, applied first; below it, an **"Enable Resolution Changes"** master checkbox gates $\sigma$ (km/s), $\text{FWHM}$ (Å), or $R$ ($\lambda/\Delta\lambda$) convolution, applied after the redshift correction.
-- **Physical Validation**: Built-in protection that immediately checks and blocks unphysical convolutions (e.g., attempting to convolve to a higher resolution where $\text{FWHM}_{\text{fin}} < \text{FWHM}_{\text{ini}}$, or enabling resolution changes without at least one initial *and* one final value set).
-- **Other Settings (Step 3)**: An **Error Estimation** choice between "Don't compute errors", the **Equation** formalism ([Vollmann & Eversberg 2006](https://doi.org/10.1002/asna.2006)), or **Monte Carlo** ($N$ iterations); plus Å-to-magnitude conversions, negative-EW-to-zero, and composite index formulas.
-- **Index Selection**: A **"Select Indices…"** dialog lists every index in the chosen `.ind` file with a checkbox, lets you save a custom subset as a new `.ind` file, and automatically unchecks (with a warning if you try to re-check) any index whose *Line Limits* fall outside the wavelength range covered by the spectra you're about to process.
-- **Automatic Out-of-Range Check**: If you don't use "Select Indices…" yourself, clicking **Run** still scans the whole batch of spectra once, and — if any indices fall outside the covered range — shows a single confirmation listing exactly which ones will be excluded.
-- **Live Logging & Output Table**: Real-time console log (including a run-configuration summary: which corrections are active, with what values, and where every output file is saved) and an interactive results preview table with direct CSV export.
-- **Results Plotting**: A **"Plot…"** button on the results table opens a separate window to plot any index (or an expression combining indices, e.g. `Mg2 - Fe5270`) against another, with an **"Error bars"** checkbox that automatically overlays the matching `e_<index>` uncertainties, and a "Save Plot As…" option (PNG/PDF/SVG).
-- **State Management**: Save and load complete GUI configurations as `.json` files.
+**Step 1 – Input Files.** Point it at a table listing your spectra (with optional per-spectrum
+`sigma`/`FWHM`/`R`/`z` columns), or just give it a directory and a file extension/pattern and let it
+find everything itself.
+
+**Step 2 – Redshift & Resolution.** Redshift correction is applied first if you turn it on, then
+resolution changes (convolving to a common $\sigma$, FWHM, or $R$) if you turn *that* on too. Both are
+off by default and need their own checkbox — nothing happens automatically just because your table
+happens to have a `z` or `sigma` column. There's also a sanity check built in: it won't let you
+convolve toward a *sharper* resolution than you started with, and it'll tell you if you've turned
+resolution changes on without giving it both a starting point and a target.
+
+**Step 3 – Other Settings.** Pick how errors get estimated — the analytic equation from
+[Vollmann & Eversberg (2006)](https://doi.org/10.1002/asna.2006), Monte Carlo simulation, or don't
+bother at all — plus Å-to-magnitude conversion, zeroing out negative EWs, and composite index
+formulas. There's also a "Select Indices…" dialog here: it lists every index in your `.ind` file with
+a checkbox, and unchecks (with a warning if you try to override it) any whose line limits fall
+outside what your spectra actually cover. You don't have to use it, either — clicking Run does the
+same range check once for the whole batch and asks you to confirm before skipping anything.
+
+**Step 4 – Plots & Output.** Individual diagnostic plots, a combined multi-panel figure, and where
+everything gets saved.
+
+Once a run finishes, the results table has a **Plot…** button that opens a little plotting window —
+pick any index (or type an expression like `Mg2 - Fe5270`) for X and Y, tick "Error bars" to overlay
+the matching `e_<index>` uncertainties, and save the figure out as PNG/PDF/SVG. You can also load a
+second results file and overplot it against the first, handy for comparing runs or checking against
+models. The Run Log at the bottom shows everything as it happens — which corrections were applied and
+with what values, where every file ended up — and the whole configuration can be saved/loaded as a
+`.json` file so you're not re-clicking through the same setup every time.
 
 ---
 
-## Quick Start (Python API)
+## Using it as a library
 
-### 1. Using a Spectrum List Table
+### A table listing your spectra
 
 ```python
 from pacce import pacce
 
-# Measure indices from a table listing the spectra
 result = pacce(
-    filename='spectra_list.dat',        # ASCII table with 'file' column
-    path_to_files='./spectra/',         # Directory containing the spectra
-    IndexDefs='Riffel_2019_defs.ind',   # Index definitions file
-    output_file='measurements.csv'      # Output table (always written as CSV)
+    filename='spectra_list.dat',        # ASCII table with a 'file' column
+    path_to_files='./spectra/',         # where the spectra actually live
+    IndexDefs='Riffel_2019_defs.ind',   # index definitions file
+    output_file='measurements.csv'      # always written out as CSV
 )
 ```
 
-### 2. Auto-discovering Spectra by Extension (No Table Needed)
+### Or just point it at a folder
 
-You can run PACCE across an entire folder of spectra without creating a list file:
+No list file needed — it'll find everything matching the pattern you give it:
 
 ```python
 from pacce import pacce
 
-# Automatically find and process all .txt spectra in the directory
 result = pacce(
     path_to_files='./spectra/',
-    file_extension='.txt',              # e.g., '.txt', '.dat', '*.spec', '*'
+    file_extension='.txt',              # '.txt', '.dat', '*.spec', '*', whatever
     IndexDefs='Riffel_2019_defs.ind',
     output_file='measurements.csv',
-    do_resolution=True,                 # required master flag to activate the correction below
-    sigma_ini=180.0,                    # Assumed initial sigma = 180 km/s
-    sigma_fin=250.0                     # Convolve all to sigma = 250 km/s
+    do_resolution=True,                 # this flag has to be on for the two below to matter
+    sigma_ini=180.0,                    # assumed starting sigma, km/s
+    sigma_fin=250.0                     # convolve everything to this
 )
 ```
 
-The returned `result` is a `pandas.DataFrame` containing all measured indices and errors, and is also
-written to `output_file` in CSV format.
+`result` comes back as a `pandas.DataFrame` with every measured index and its error, and the same
+table gets written to `output_file` as CSV.
 
-> **Note:** `do_resolution` and `do_redshift` default to `False`. Simply passing `sigma_fin`, `z`,
-> etc. has **no effect** unless the corresponding flag is also set to `True` — this applies even if
-> the input table already has `sigma`/`FWHM`/`R`/`z` columns. See
-> [Resolution Mixing & Validation](#resolution-mixing--validation) below.
+One thing worth flagging: `do_resolution` and `do_redshift` both default to `False`, and nothing
+happens without them — even `sigma_fin=250.0` above does nothing on its own. Same goes for a table
+that already has `sigma`/`FWHM`/`R`/`z` columns: they're ignored unless the matching flag is on. More
+on why, and what gets validated, [further down](#a-word-on-resolution-and-redshift).
 
-### 3. Applying a Redshift Correction
+### Redshift correction works the same way
 
 ```python
 from pacce import pacce
@@ -180,10 +182,10 @@ result = pacce(
 )
 ```
 
-### 4. Pre-excluding Indices Outside the Spectra's Wavelength Range
+### Dropping indices that fall outside your spectra's range
 
-The same check the GUI's "Select Indices…" dialog performs is available as plain functions, so you
-can filter an `.ind` file from a script before calling `pacce()`:
+The GUI's "Select Indices…" check is really just a couple of plain functions underneath, so you can
+do the same filtering from a script:
 
 ```python
 from pacce.pacce_wapper import (
@@ -200,35 +202,33 @@ in_range = filter_idx_by_range(idx_definitions, wave_min, wave_max)
 print(f"{(~in_range).sum()} of {len(idx_definitions)} indices fall outside "
       f"{wave_min:.1f}-{wave_max:.1f} Å and will be skipped.")
 
-# Option A: save the filtered subset as a new .ind file for reuse
+# either save the filtered list as a new .ind file for later...
 write_idx_defs(idx_definitions, 'defs_in_range.ind', in_range)
 result = pacce(path_to_files='./spectra/', file_extension='.txt',
                 IndexDefs='defs_in_range.ind', output_file='measurements.csv')
 
-# Option B: pass the filtered array directly, no intermediate file needed
+# ...or just hand the filtered array straight to pacce(), no file needed
 result = pacce(path_to_files='./spectra/', file_extension='.txt',
                 IndexDefs=idx_definitions[in_range], output_file='measurements.csv')
 ```
 
 ---
 
-## Terminal Usage
+## From the terminal
 
-Everything above also runs from a plain terminal — no notebook or IDE required.
+None of this needs a notebook — it's all just as happy running from a shell.
 
-### 1. Launching the GUI
+### Launching the GUI
 
 ```bash
-# Console command installed by pip
 pacce-gui
-
-# Equivalent module execution
+# or
 python -m pacce
 ```
 
-### 2. Running PACCE as a Script
+### Running a script
 
-Save any of the API examples above to a `.py` file and run it directly:
+Any of the examples above work as a plain `.py` file:
 
 ```bash
 cat > run_pacce.py << 'EOF'
@@ -249,8 +249,8 @@ EOF
 python run_pacce.py
 ```
 
-With `print_log` left unset (the default), the run-configuration summary and per-spectrum progress
-print straight to the terminal, e.g.:
+With `print_log` left unset, everything prints straight to the terminal as it runs — a short summary
+of what's turned on, then progress per spectrum:
 
 ```
 Found 12 spectra matching '*.txt' in './spectra/'
@@ -269,10 +269,10 @@ Doing file spec_001.txt with error
 Measurements saved to measurements.csv (CSV)
 ```
 
-### 3. Logging to a File Instead of the Terminal
+### Logging to a file instead
 
-Pass `print_log='pacce.log'` to redirect that same output to a file (handy for batch jobs run with
-`nohup`/`screen`/a scheduler), while `result` is still returned in-process:
+Useful if you're kicking this off with `nohup`, `screen`, or a job scheduler and want to check on it
+later rather than watch it live:
 
 ```bash
 python -c "
@@ -286,55 +286,53 @@ tail -f pacce.log
 
 ---
 
-## Input Parameters
+## Parameters
 
-| Parameter | Description |
+| Parameter | What it does |
 |---|---|
-| `filename` | ASCII table listing 1-D spectra. Must contain a `file` column. Can include per-spectrum columns: `sigma`, `FWHM`, `R`, `z`. *(Optional if `file_extension` is used)* |
-| `path_to_files` | Directory containing the spectra. Default: `'./'`. |
-| `file_extension` | Pattern or extension to auto-discover spectra when `filename` is not provided (e.g., `'.txt'`, `'.dat'`, `'*.spec'`, `'*'`). |
-| `IndexDefs` | Path to the index definitions file (`.ind`), **or** an already-loaded structured array (e.g. the output of `read_idx_defs()` filtered by `filter_idx_by_range()`). |
-| `output_file` | Path for saving the output measurements table, always written as **CSV** regardless of extension. Default: `'demo.txt'`. |
-| `do_resolution` | Master flag (default `False`). Must be `True` for *any* resolution correction to apply — including `sigma`/`FWHM`/`R` columns already present in `filename`'s table. |
-| `sigma_ini` / `sigma_fin` | Initial / final velocity dispersion ($\text{km/s}$) for convolution. Only used when `do_resolution=True`. |
-| `FWHM_ini` / `FWHM_fin` | Initial / final FWHM ($\text{Å}$) for convolution. Only used when `do_resolution=True`. |
-| `R_ini` / `R_fin` | Initial / final resolving power $R = \lambda/\Delta\lambda$. Only used when `do_resolution=True`. |
-| `do_redshift` | Master flag (default `False`). Must be `True` for the `z` correction to apply — including a `z` column already present in `filename`'s table. |
-| `z` | Global redshift correction to apply before measuring. Only used when `do_redshift=True`. |
-| `simulate` | Number of Monte Carlo iterations for error estimation. |
-| `error` | If `True`, utilizes the error spectrum (3rd column) for analytical uncertainties. |
-| `negative_Ew_to_zero` | If `True`, sets negative equivalent width measurements to zero. |
-| `A_to_mag` | List of index names to convert from $\text{Å}$ to magnitudes (e.g. `['Mg1', 'Mg2']`). |
-| `compute_idx` | Path to a text file containing composite index expressions (e.g. `MgFe'`), one per line. |
-| `print_log` | Path to a text file to redirect standard output log. |
-| `path_singleind_plots` | Directory for saving individual diagnostic index plots. |
-| `AllIndicesPlot` | Filename for saving a combined multi-panel index plot (e.g. `'all_indices.png'`). |
-| `allindices_plot_path` | Directory for saving the combined multi-panel plot. |
+| `filename` | ASCII table listing your spectra, needs a `file` column. Can also carry per-spectrum `sigma`, `FWHM`, `R`, `z` columns. Optional if you're using `file_extension` instead. |
+| `path_to_files` | Where the spectra are. Default `'./'`. |
+| `file_extension` | Pattern to auto-discover spectra when there's no `filename` (`'.txt'`, `'.dat'`, `'*.spec'`, `'*'`, ...). |
+| `IndexDefs` | Path to an `.ind` file, or an already-loaded array (e.g. from `read_idx_defs()`, possibly filtered by `filter_idx_by_range()`). |
+| `output_file` | Where the measurements go — always CSV, whatever extension you give it. Default `'demo.txt'`. |
+| `do_resolution` | Off by default. Has to be `True` for any resolution correction to apply, table columns included. |
+| `sigma_ini` / `sigma_fin` | Starting / target velocity dispersion (km/s). Only matters with `do_resolution=True`. |
+| `FWHM_ini` / `FWHM_fin` | Same idea, in FWHM (Å). |
+| `R_ini` / `R_fin` | Same idea, as resolving power $R=\lambda/\Delta\lambda$. |
+| `do_redshift` | Off by default. Has to be `True` for `z` to apply, table column included. |
+| `z` | Redshift to correct for. Only matters with `do_redshift=True`. |
+| `simulate` | Number of Monte Carlo iterations, if that's how you want errors estimated. |
+| `error` | Use the equation-based (Vollmann & Eversberg) error estimate instead. |
+| `negative_Ew_to_zero` | Clip negative EW measurements to zero. |
+| `A_to_mag` | Index names to convert from Å to magnitudes, e.g. `['Mg1', 'Mg2']`. |
+| `compute_idx` | Text file of composite index expressions (one per line, e.g. something like `MgFe'`). |
+| `print_log` | File to send the log to, instead of stdout. |
+| `path_singleind_plots` | Directory for the per-index diagnostic plots. |
+| `AllIndicesPlot` | Filename for the combined multi-panel figure. |
+| `allindices_plot_path` | Directory for that combined figure. |
 
 ---
 
-## Resolution Mixing & Validation
+## A word on resolution and redshift
 
-Resolution and redshift corrections are **opt-in**: set `do_resolution=True` and/or `do_redshift=True`
-(in the API) or check the matching master checkbox (in the GUI) before they take any effect — this
-also applies to `sigma`/`FWHM`/`R`/`z` columns already present in an input table, which are otherwise
-ignored.
+Both corrections are opt-in, on purpose — set `do_resolution=True` and/or `do_redshift=True` (or tick
+the matching box in the GUI) before anything happens. That includes `sigma`/`FWHM`/`R`/`z` columns
+already sitting in an input table; they're ignored otherwise.
 
-The resolution parameters (`sigma`, `FWHM`, `R`) can be mixed freely—for example, providing `FWHM_ini` together with $\sigma_{\text{fin}}$, or $R_{\text{ini}}$ with $\sigma_{\text{fin}}$.
+Resolution can be given in whatever mix of units is convenient — `FWHM_ini` with $\sigma_{\text{fin}}$,
+$R_{\text{ini}}$ with $\sigma_{\text{fin}}$, doesn't matter. Internally everything gets converted to
+wavelength-dependent FWHM in Å:
 
-PACCE converts all resolution units internally into wavelength-dependent $\text{FWHM}(\lambda)$ in Ångströms:
-- **From $\sigma$ (km/s)**: $\text{FWHM}(\lambda) = \left(\frac{\sigma \cdot 2.355}{c}\right) \cdot \lambda$
-- **From $R$ ($\lambda/\Delta\lambda$)**: $\text{FWHM}(\lambda) = \frac{\lambda}{R}$
+- from $\sigma$ (km/s): $\text{FWHM}(\lambda) = (\sigma \cdot 2.355 / c) \cdot \lambda$
+- from $R$: $\text{FWHM}(\lambda) = \lambda / R$
 
-### Physical Validation
-Spectral convolution can only **degrade/broaden** resolution. PACCE automatically validates resolution settings both in the Python API and the GUI:
-- If `do_resolution=True` but no value greater than zero is set in at least one of `sigma_ini`/`FWHM_ini`/`R_ini` **and** at least one of `sigma_fin`/`FWHM_fin`/`R_fin` (as a parameter or a table column), a clear `ValueError` is raised (the GUI shows a dialog instead). The same applies to `do_redshift=True` without any `z` value available.
-- If target resolution is higher than initial resolution ($\text{FWHM}_{\text{fin}} < \text{FWHM}_{\text{ini}}$, $\sigma_{\text{fin}} < \sigma_{\text{ini}}$, or $R_{\text{fin}} > R_{\text{ini}}$), the code raises a clear `ValueError` and the GUI blocks execution with a detailed warning.
+A couple of guardrails are built in. Convolution can only broaden a spectrum, never sharpen it, so if
+you ask for a target resolution higher than the starting one, you get a clear `ValueError` (or a
+dialog, in the GUI) instead of a confusing result. Same if you turn `do_resolution` on but don't
+actually give it a starting *and* target value, or turn on `do_redshift` with no `z` anywhere.
 
-### Run Configuration Summary
-Every run prints a short summary as the first thing in the log (to the terminal, to `print_log`'s
-file, or to the GUI's Run Log console) stating whether each correction is active and with what
-values, followed by where every output (measurements table, log, plots) is being saved:
+Every run also prints a short summary first thing, whether that's to the terminal, a log file, or the
+GUI's console — what's active, with what values, and where things are being saved:
 
 ```
 ============================================================
@@ -350,113 +348,91 @@ Output file: measurements.csv (CSV)
 
 ---
 
-## Index Definitions File
+## The index definitions file
 
-The definitions file is pipe-delimited (`|`) with four columns:
+Pipe-delimited, four columns:
 
 ```
 # Name     Line                    RedCont                BlueCont                Ref.
 Mgb  |  5160.1250-5192.6250  |  5142.6250-5161.3750, 5191.3750-5206.3750  |  (Trager+98)
 ```
 
-- **Name**: Index identifier
-- **Line**: Wavelength range of the feature (set both limits equal for a break index)
-- **Continuum bands**: Comma-separated pairs of wavelength ranges for the continuum fit
-- **Ref.**: Literature reference
+Name, the line's wavelength range (set both limits equal if it's a break index rather than a line),
+the continuum bands as comma-separated pairs, and a reference. A couple of ready-made definition files
+live in `pacce/suport_files/` — `Riffel_2019_defs.ind` and `less_defs.ind`.
 
-Pre-configured definition files are bundled in `pacce/suport_files/` (`Riffel_2019_defs.ind`, `less_defs.ind`).
-
----
-
-## Excluding Out-of-Range Indices (GUI)
-
-A generic `.ind` file often mixes indices from different spectral ranges (optical + near-IR, for
-example). Measuring an index whose *Line Limits* fall outside a spectrum's wavelength coverage fails
-for that spectrum and shows up as `NaN` in the results.
-
-- **Automatic check**: clicking **Run** scans the wavelength coverage across the whole batch of
-  spectra once (not once per spectrum) and, if any indices fall outside it, shows a single
-  confirmation dialog listing exactly which ones will be excluded before proceeding.
-- **Manual control**: the **"Select Indices…"** button (next to the Index Definitions combo box)
-  opens a checklist of every index in the file. Indices outside the batch's wavelength range start
-  unchecked; checking one back on shows a warning but still allows the override. **"Save Selection
-  As…"** writes the checked subset out as a new `.ind` file for reuse.
-
-The same logic is available from a script — see
-[§4 Pre-excluding Indices Outside the Spectra's Wavelength Range](#4-pre-excluding-indices-outside-the-spectras-wavelength-range) above.
+If you're mixing indices from different spectral regions (optical + near-IR, say), some will
+inevitably fall outside what a given spectrum actually covers. Rather than let those quietly come back
+as `NaN`, PACCE can catch it upfront — see [§Dropping indices that fall outside your spectra's range](#dropping-indices-that-fall-outside-your-spectras-range)
+for the scripted version, or the GUI's "Select Indices…" dialog for the point-and-click one.
 
 ---
 
-## Plotting Results (GUI)
+## Errors
 
-Once a run finishes, the **"Plot…"** button above the Results Preview table opens a separate window:
+Two ways to get them:
 
-- Choose **X** and **Y** from a dropdown of index names, or type an expression combining several of
-  them (e.g. `Mg2 - Fe5270`, `log10(Hbeta)`). Wrap names containing dots or dashes in backticks, e.g.
-  `` `NaI1.14` / Mg2 ``. The `e_<index>` error columns are not listed as plottable variables.
-- Check **"Error bars"** to automatically overlay the matching `e_<index>` uncertainty for whichever
-  axis is set to a plain index name (an axis using an expression is plotted without error bars, since
-  there is no single matching error column for it).
-- **"Save Plot As…"** exports the figure as PNG, PDF, or SVG.
+1. **Equation** (the default, when there's an error spectrum to work with) — estimated from the S/N
+   in the line and continuum, using the formalism in [Vollmann & Eversberg (2006)](https://doi.org/10.1002/asna.2006),
+   Astronomische Nachrichten, DOI 10.1002/asna.2006 ([arXiv version](https://arxiv.org/pdf/astro-ph/0606341.pdf)).
+2. **Monte Carlo** (`simulate=N`) — generates `N` synthetic spectra from the flux and error arrays,
+   remeasures everything on each one, and takes the standard deviation as the uncertainty.
 
 ---
 
-## Error Handling
+## Convolution
 
-PACCE supports two approaches for error estimation:
-
-1. **Equation (default when error spectrum exists)**: Estimates errors from the S/N ratio in the feature and continuum bands using the formalism of Vollmann & Eversberg (2006), Astronomische Nachrichten, DOI [10.1002/asna.2006](https://doi.org/10.1002/asna.2006).
-2. **Monte Carlo (`simulate=N`)**: Generates $N$ synthetic spectra from the observed spectrum and error array, re-measures the indices, and derives the uncertainty from the standard deviation.
-
----
-
-## Variable-Sigma Convolution
-
-PACCE performs spectral convolution with a variable-sigma Gaussian kernel using the Fourier-space algorithm described in [Cappellari (2022)](https://ui.adsabs.harvard.edu/abs/2022arXiv220814974C). This handles wavelength-dependent resolution differences properly, including error propagation following [Klein (2021)](https://ui.adsabs.harvard.edu/abs/2021RNAAS...5...39K).
+Spectral convolution uses a variable-sigma Gaussian kernel, done in Fourier space following
+[Cappellari (2022)](https://ui.adsabs.harvard.edu/abs/2022arXiv220814974C), with error propagation
+based on [Klein (2021)](https://ui.adsabs.harvard.edu/abs/2021RNAAS...5...39K). This is what lets
+PACCE handle wavelength-dependent resolution properly instead of assuming a single sigma across the
+whole spectrum.
 
 ---
 
-## Examples
+## Worked examples
 
-Two Jupyter notebooks are provided in the repository:
+Two notebooks in the repo walk through actual use cases:
 
-- **`Examples.ipynb`** — Demonstrates the full API: basic index measurement, spectral convolution, magnitude conversion, composite indices, MC error estimation, and diagnostic plotting.
-- **`Models_and_obs.ipynb`** — Practical use case: measuring indices in SDSS spectra and E-MILES models at a common resolution, then deriving ages and metallicities via grid interpolation.
+- **`Examples.ipynb`** — the full API: measuring indices, convolving to a common resolution,
+  converting to magnitudes, composite indices, Monte Carlo errors, diagnostic plots.
+- **`Models_and_obs.ipynb`** — measuring indices in SDSS spectra and E-MILES models at a matched
+  resolution, then getting ages and metallicities out via grid interpolation.
 
 ---
 
-## Project Structure
+## Layout of the repo
 
 ```
 pacce/
 ├── pacce/
-│   ├── __init__.py              # Package entry point (exports pacce, PacceFunctions, and gui())
-│   ├── __main__.py              # CLI launcher (python -m pacce)
-│   ├── PacceFunctions.py        # Core algorithms (eqw, varsmooth, plotting, etc.)
-│   ├── pacce_wapper.py          # High-level wrapper function (table & auto-discovery)
-│   ├── pacce_run.py             # Example script
-│   ├── assets/                  # Branding and UI assets (logo.jpg)
-│   ├── gui/                     # PyQt5 Graphical Interface
+│   ├── __init__.py              # exports pacce, PacceFunctions, and gui()
+│   ├── __main__.py              # lets you do `python -m pacce`
+│   ├── PacceFunctions.py        # the actual algorithms: eqw, varsmooth, plotting, etc.
+│   ├── pacce_wapper.py          # the pacce() wrapper - table & auto-discovery, index filtering
+│   ├── pacce_run.py             # example script
+│   ├── assets/                  # logo, screenshots
+│   ├── gui/                     # the PyQt5 interface
 │   │   ├── __init__.py
-│   │   ├── constants.py         # UI themes and styling
-│   │   ├── custom_widgets.py    # Reusable controls & console
-│   │   ├── main_gui.py          # Main application window & background worker
-│   │   ├── index_selection_dialog.py  # "Select Indices…" checklist dialog
-│   │   └── plot_dialog.py       # "Plot…" results window (with error bars)
-│   ├── suport_files/            # Index definitions and spectral resolution data
-│   └── examples/                # SDSS spectra, MILES models, and example tables
-├── Examples.ipynb               # Tutorial notebook
-├── Models_and_obs.ipynb         # Models vs. observations notebook
-├── pyproject.toml               # Build configuration and console scripts
-├── setup.py                     # Setup script
+│   │   ├── constants.py         # colors, stylesheet
+│   │   ├── custom_widgets.py    # the toggle rows, file pickers, console, etc.
+│   │   ├── main_gui.py          # the main window and background worker
+│   │   ├── index_selection_dialog.py  # "Select Indices…" window
+│   │   └── plot_dialog.py       # "Plot…" window
+│   ├── suport_files/            # bundled index definitions
+│   └── examples/                # SDSS spectra, MILES models, example tables
+├── Examples.ipynb
+├── Models_and_obs.ipynb
+├── pyproject.toml
+├── setup.py
 └── README.md
 ```
 
 ---
 
-## Citation
+## Citing this
 
-If you use PACCE in your research, please cite:
+If PACCE was useful for a paper, please cite:
 
 > Riffel, R. & Vale, T. B., 2011, Ap&SS, 334, 351
 
@@ -464,4 +440,4 @@ If you use PACCE in your research, please cite:
 
 ## License
 
-This project is open source. See the repository for details.
+Open source — see the repository for the license terms.
