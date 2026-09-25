@@ -50,17 +50,17 @@ Straight from GitHub:
 
 ```bash
 # public repo (or via an HTTPS token)
-pip install git+https://github.com/rriffel/pacce.git@paccegui
+pip install git+https://github.com/rriffel/saira.git@paccegui
 
 # private repo, over SSH
-pip install git+ssh://git@github.com/rriffel/pacce.git@paccegui
+pip install git+ssh://git@github.com/rriffel/saira.git@paccegui
 ```
 
 Or if you want to poke at the code / contribute, clone it and install in editable mode:
 
 ```bash
-git clone -b paccegui https://github.com/rriffel/pacce.git
-cd pacce
+git clone -b paccegui https://github.com/rriffel/saira.git
+cd saira
 pip install -e .
 ```
 

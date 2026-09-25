@@ -20,7 +20,7 @@ setup(
     },
     include_package_data=True,
     author="Joao P. V. Benedetti & Rogerio Riffel",
-    url="https://github.com/rriffel/pacce",
+    url="https://github.com/rriffel/saira",
     python_requires=">=3.10",
     install_requires=["astropy", "pandas", "scipy", "matplotlib", "PyQt5"],
 )

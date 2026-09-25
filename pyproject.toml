@@ -26,8 +26,8 @@ dependencies = [
 saira-gui = "saira.gui.main_gui:main"
 
 [project.urls]
-Homepage = "https://github.com/rriffel/pacce"
-Repository = "https://github.com/rriffel/pacce"
+Homepage = "https://github.com/rriffel/saira"
+Repository = "https://github.com/rriffel/saira"
 
 [tool.setuptools.packages.find]
 include = ["saira*"]
