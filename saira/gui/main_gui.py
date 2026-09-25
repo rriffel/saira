@@ -24,10 +24,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt5.QtGui import QFont, QIcon, QPixmap, QColor
 
-from .constants import (
-    STYLESHEET, ACCENT, ACCENT_HOVER, CARD_BG, TEXT_COLOR,
-    MUTED, BORDER_COLOR, SUCCESS_COLOR, DANGER_COLOR
-)
+from . import constants
 from .custom_widgets import (
     FilePickerRow, ToggleDoubleRow,
     ToggleTextRow, ToggleFilePickerRow, LogConsole
@@ -114,7 +111,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("SAIRA — Self-consistent Algorithm for spectral Indices measuRements and Analysis")
         self.resize(1200, 860)
-        self.setStyleSheet(STYLESHEET)
+        self.setStyleSheet(constants.STYLESHEET)
 
         self.worker = None
         self.result_df = None
@@ -179,20 +176,18 @@ class MainWindow(QMainWindow):
     def _create_sidebar(self):
         sidebar = QWidget()
         sidebar.setFixedWidth(240)
-        sidebar.setStyleSheet(
-            f"background-color: {CARD_BG}; border-right: 1px solid {BORDER_COLOR};"
-        )
+        sidebar.setProperty("role", "sidebar")
         layout = QVBoxLayout(sidebar)
         layout.setContentsMargins(12, 20, 12, 20)
         layout.setSpacing(8)
 
         # Title
         title = QLabel("SAIRA")
-        title.setStyleSheet(
-            f"font-size: 20px; font-weight: 800; color: {ACCENT}; margin-bottom: 2px;"
-        )
+        title.setProperty("role", "appTitle")
+        title.setStyleSheet("font-size: 20px; font-weight: 800; margin-bottom: 2px;")
         sub = QLabel("Continuum & EW Measurement")
-        sub.setStyleSheet(f"font-size: 11px; color: {MUTED}; margin-bottom: 4px;")
+        sub.setProperty("role", "mutedLabel")
+        sub.setStyleSheet("font-size: 11px; margin-bottom: 4px;")
         sub.setWordWrap(True)
         layout.addWidget(title)
         layout.addWidget(sub)
@@ -230,10 +225,7 @@ class MainWindow(QMainWindow):
 
         # Run button
         self.btn_run = QPushButton("▶  Run SAIRA")
-        self.btn_run.setStyleSheet(
-            f"background-color: {SUCCESS_COLOR}; color: white; font-weight: bold;"
-            f"font-size: 14px; padding: 10px 16px; border-radius: 8px;"
-        )
+        self.btn_run.setProperty("role", "runBtn")
         self.btn_run.setCursor(Qt.PointingHandCursor)
         self.btn_run.clicked.connect(self._on_run)
         layout.addWidget(self.btn_run)
@@ -242,37 +234,49 @@ class MainWindow(QMainWindow):
 
         # Config state
         lbl_cfg = QLabel("Configuration")
-        lbl_cfg.setStyleSheet(
-            f"color: {ACCENT}; font-size: 11px; font-weight: bold; margin-bottom: 2px;"
-        )
+        lbl_cfg.setProperty("role", "accentLabel")
+        lbl_cfg.setStyleSheet("font-size: 11px; font-weight: bold; margin-bottom: 2px;")
         layout.addWidget(lbl_cfg)
 
         btn_load = QPushButton("Load Config")
-        btn_load.setStyleSheet(
-            "background-color: #F8FAFC; border: 1px solid #CBD5E1;"
-            "border-radius: 6px; padding: 6px; color: #334155;"
-        )
+        btn_load.setProperty("role", "secondaryBtn")
         btn_load.setCursor(Qt.PointingHandCursor)
         btn_load.clicked.connect(self._on_load_config)
         layout.addWidget(btn_load)
 
         btn_save = QPushButton("Save Config")
-        btn_save.setStyleSheet(
-            "background-color: #F8FAFC; border: 1px solid #CBD5E1;"
-            "border-radius: 6px; padding: 6px; color: #334155;"
-        )
+        btn_save.setProperty("role", "secondaryBtn")
         btn_save.setCursor(Qt.PointingHandCursor)
         btn_save.clicked.connect(self._on_save_config)
         layout.addWidget(btn_save)
+
+        layout.addSpacing(12)
+
+        # Appearance
+        lbl_appearance = QLabel("Appearance")
+        lbl_appearance.setProperty("role", "accentLabel")
+        lbl_appearance.setStyleSheet("font-size: 11px; font-weight: bold; margin-bottom: 2px;")
+        layout.addWidget(lbl_appearance)
+
+        self.chk_dark_mode = QCheckBox("  Dark Mode")
+        self.chk_dark_mode.setChecked(constants.is_dark())
+        self.chk_dark_mode.toggled.connect(self._on_toggle_theme)
+        layout.addWidget(self.chk_dark_mode)
 
         layout.addStretch()
 
         # Footer
         footer = QLabel("Rogério Riffel\nJoão P. V. Benedetti\nUFRGS / Depto Astronomia")
-        footer.setStyleSheet(f"color: {MUTED}; font-size: 11px; line-height: 1.4;")
+        footer.setProperty("role", "mutedLabel")
+        footer.setStyleSheet("font-size: 11px; line-height: 1.4;")
         layout.addWidget(footer)
 
         return sidebar
+
+    def _on_toggle_theme(self, checked):
+        """Switch between light and dark mode."""
+        constants.set_theme(checked)
+        self.setStyleSheet(constants.STYLESHEET)
 
     # ----- Section Scroll -----
 
@@ -354,7 +358,8 @@ class MainWindow(QMainWindow):
         ext_lay.addWidget(self.combo_extension, 1)
 
         self.lbl_discovered_count = QLabel("")
-        self.lbl_discovered_count.setStyleSheet(f"color: {ACCENT}; font-size: 12px; font-weight: bold;")
+        self.lbl_discovered_count.setProperty("role", "accentLabel")
+        self.lbl_discovered_count.setStyleSheet("font-size: 12px; font-weight: bold;")
         ext_lay.addWidget(self.lbl_discovered_count)
 
         lay.addWidget(self.ext_row)
@@ -393,7 +398,8 @@ class MainWindow(QMainWindow):
         lay.addWidget(idx_row)
 
         self.lbl_idx_selection = QLabel("")
-        self.lbl_idx_selection.setStyleSheet(f"color: {ACCENT}; font-size: 11px;")
+        self.lbl_idx_selection.setProperty("role", "accentLabel")
+        self.lbl_idx_selection.setStyleSheet("font-size: 11px;")
         lay.addWidget(self.lbl_idx_selection)
 
         self.pick_output = FilePickerRow(
@@ -528,7 +534,7 @@ class MainWindow(QMainWindow):
 
         # Redshift correction is applied first, before any resolution changes.
         self.chk_enable_redshift = QCheckBox("  Enable Redshift Correction")
-        self.chk_enable_redshift.setStyleSheet(f"color: {ACCENT}; font-weight: bold;")
+        self.chk_enable_redshift.setProperty("role", "masterToggle")
         self.chk_enable_redshift.setChecked(False)
         self.chk_enable_redshift.toggled.connect(self._on_redshift_flag_toggled)
         lay.addWidget(self.chk_enable_redshift)
@@ -545,12 +551,13 @@ class MainWindow(QMainWindow):
             "per-spectrum in the input table (columns: sigma, FWHM, R), but they "
             "are only used when the flag below is enabled."
         )
-        info.setStyleSheet(f"color: {MUTED}; font-size: 12px; margin-top: 8px; margin-bottom: 4px;")
+        info.setProperty("role", "mutedLabel")
+        info.setStyleSheet("font-size: 12px; margin-top: 8px; margin-bottom: 4px;")
         info.setWordWrap(True)
         lay.addWidget(info)
 
         self.chk_enable_resolution = QCheckBox("  Enable Resolution Changes")
-        self.chk_enable_resolution.setStyleSheet(f"color: {ACCENT}; font-weight: bold;")
+        self.chk_enable_resolution.setProperty("role", "masterToggle")
         self.chk_enable_resolution.setChecked(False)
         self.chk_enable_resolution.toggled.connect(self._on_resolution_flag_toggled)
         lay.addWidget(self.chk_enable_resolution)
@@ -716,9 +723,8 @@ class MainWindow(QMainWindow):
         log_lay.setContentsMargins(0, 0, 0, 0)
         log_lay.setSpacing(4)
         lbl_log = QLabel("Run Log")
-        lbl_log.setStyleSheet(
-            f"color: {ACCENT}; font-size: 12px; font-weight: bold;"
-        )
+        lbl_log.setProperty("role", "accentLabel")
+        lbl_log.setStyleSheet("font-size: 12px; font-weight: bold;")
         log_lay.addWidget(lbl_log)
         self.log_console = LogConsole()
         log_lay.addWidget(self.log_console)
@@ -734,9 +740,8 @@ class MainWindow(QMainWindow):
         hdr_lay = QHBoxLayout(hdr)
         hdr_lay.setContentsMargins(0, 0, 0, 0)
         lbl_res = QLabel("Results Preview")
-        lbl_res.setStyleSheet(
-            f"color: {ACCENT}; font-size: 12px; font-weight: bold;"
-        )
+        lbl_res.setProperty("role", "accentLabel")
+        lbl_res.setStyleSheet("font-size: 12px; font-weight: bold;")
         hdr_lay.addWidget(lbl_res)
         hdr_lay.addStretch()
         self.btn_plot = QPushButton("Plot…")

@@ -9,7 +9,6 @@ from PyQt5.QtWidgets import (
     QSpinBox, QTextEdit, QSizePolicy
 )
 from PyQt5.QtCore import Qt
-from .constants import ACCENT, MUTED, BORDER_COLOR
 
 
 class FilePickerRow(QWidget):

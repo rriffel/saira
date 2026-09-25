@@ -16,7 +16,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor
 
-from .constants import STYLESHEET, ACCENT, MUTED, DANGER_COLOR
+from . import constants
 
 
 class IndexSelectionDialog(QDialog):
@@ -26,7 +26,7 @@ class IndexSelectionDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Select Indices")
         self.resize(640, 560)
-        self.setStyleSheet(STYLESHEET)
+        self.setStyleSheet(constants.STYLESHEET)
 
         self.idx_definitions = idx_definitions
         self.wave_min = wave_min
@@ -53,7 +53,8 @@ class IndexSelectionDialog(QDialog):
         else:
             info = QLabel("Check or uncheck the indices you want to include in this run.")
         info.setWordWrap(True)
-        info.setStyleSheet(f"color: {MUTED}; font-size: 12px;")
+        info.setProperty("role", "mutedLabel")
+        info.setStyleSheet("font-size: 12px;")
         layout.addWidget(info)
 
         self.table = QTableWidget()
@@ -66,7 +67,8 @@ class IndexSelectionDialog(QDialog):
         layout.addWidget(self.table)
 
         self.lbl_summary = QLabel()
-        self.lbl_summary.setStyleSheet(f"color: {ACCENT}; font-weight: bold; font-size: 12px;")
+        self.lbl_summary.setProperty("role", "accentLabel")
+        self.lbl_summary.setStyleSheet("font-weight: bold; font-size: 12px;")
         layout.addWidget(self.lbl_summary)
 
         btn_row = QHBoxLayout()
@@ -85,7 +87,7 @@ class IndexSelectionDialog(QDialog):
         ok_row = QHBoxLayout()
         ok_row.addStretch()
         btn_cancel = QPushButton("Cancel")
-        btn_cancel.setStyleSheet("background-color: #94A3B8;")
+        btn_cancel.setProperty("role", "mutedBtn")
         btn_cancel.clicked.connect(self.reject)
         btn_ok = QPushButton("Apply")
         btn_ok.clicked.connect(self.accept)
@@ -116,7 +118,7 @@ class IndexSelectionDialog(QDialog):
             status_item = QTableWidgetItem(status)
             status_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
             if not self.in_range_mask[row]:
-                status_item.setForeground(QColor(DANGER_COLOR))
+                status_item.setForeground(QColor(constants.DANGER_COLOR))
             self.table.setItem(row, 3, status_item)
         self.table.blockSignals(False)
         self.table.setColumnWidth(0, 28)

@@ -20,7 +20,8 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
 
-from .constants import STYLESHEET, ACCENT, MUTED, DANGER_COLOR
+from . import constants
+from .constants import PLOT_ACCENT, PLOT_DANGER
 
 
 class PlotDialog(QDialog):
@@ -30,7 +31,7 @@ class PlotDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Plot Results")
         self.resize(780, 700)
-        self.setStyleSheet(STYLESHEET)
+        self.setStyleSheet(constants.STYLESHEET)
 
         self.df = df
         self.label = label
@@ -53,7 +54,8 @@ class PlotDialog(QDialog):
             "detects whether it has any."
         )
         info.setWordWrap(True)
-        info.setStyleSheet(f"color: {MUTED}; font-size: 12px;")
+        info.setProperty("role", "mutedLabel")
+        info.setStyleSheet("font-size: 12px;")
         layout.addWidget(info)
 
         # Only plot-able index columns are offered — the e_<name> error
@@ -102,7 +104,8 @@ class PlotDialog(QDialog):
         overlay_row.addWidget(self.btn_clear_overlay)
 
         self.lbl_overlay = QLabel("")
-        self.lbl_overlay.setStyleSheet(f"color: {DANGER_COLOR}; font-size: 12px;")
+        self.lbl_overlay.setProperty("role", "dangerLabel")
+        self.lbl_overlay.setStyleSheet("font-size: 12px;")
         overlay_row.addWidget(self.lbl_overlay)
         overlay_row.addStretch()
         layout.addLayout(overlay_row)
@@ -133,7 +136,7 @@ class PlotDialog(QDialog):
         btn_save.clicked.connect(self._on_save)
         btn_row.addWidget(btn_save)
         btn_close = QPushButton("Close")
-        btn_close.setStyleSheet("background-color: #94A3B8;")
+        btn_close.setProperty("role", "mutedBtn")
         btn_close.clicked.connect(self.accept)
         btn_row.addWidget(btn_close)
         layout.addLayout(btn_row)
@@ -196,7 +199,7 @@ class PlotDialog(QDialog):
         try:
             main_label = self.label if self.df2 is not None else None
             xerr, yerr = self._plot_dataset(
-                ax, self.df, x_expr, y_expr, ACCENT, 'o', main_label
+                ax, self.df, x_expr, y_expr, PLOT_ACCENT, 'o', main_label
             )
         except Exception as e:
             QMessageBox.warning(self, "Invalid Expression", f"Could not evaluate: {e}")
@@ -211,7 +214,7 @@ class PlotDialog(QDialog):
                 overlay_label = f"{self.df2_label} ({x2_expr} vs {y2_expr})"
             try:
                 overlay_xerr, overlay_yerr = self._plot_dataset(
-                    ax, self.df2, x2_expr, y2_expr, DANGER_COLOR, 's', overlay_label
+                    ax, self.df2, x2_expr, y2_expr, PLOT_DANGER, 's', overlay_label
                 )
             except Exception as e:
                 QMessageBox.warning(
