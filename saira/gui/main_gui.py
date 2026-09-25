@@ -1,8 +1,8 @@
 """
-main_gui.py — Main PACCE GUI window.
+main_gui.py — Main SAIRA GUI window.
 
-A modern, single-page interface for configuring and running PACCE
-(Python Algorithm to Compute Continuum and Equivalent widths).
+A modern, single-page interface for configuring and running SAIRA
+(Self-consistent Algorithm for spectral Indices measuRements and Analysis).
 """
 
 import os
@@ -41,7 +41,7 @@ from .plot_dialog import PlotDialog
 # ---------------------------------------------------------------------------
 
 def get_logo_path():
-    """Return the path to the PACCE logo, or None if not found."""
+    """Return the path to the SAIRA logo, or None if not found."""
     pkg_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     for ext in ("jpg", "jpeg", "png"):
         p = os.path.join(pkg_dir, "assets", f"logo.{ext}")
@@ -57,11 +57,11 @@ def get_support_dir():
 
 
 # ---------------------------------------------------------------------------
-# Worker Thread — runs pacce() in the background
+# Worker Thread — runs saira() in the background
 # ---------------------------------------------------------------------------
 
-class PacceWorker(QThread):
-    """Run the PACCE wrapper in a background thread."""
+class SairaWorker(QThread):
+    """Run the SAIRA wrapper in a background thread."""
 
     log_signal = pyqtSignal(str)
     finished_signal = pyqtSignal(object)   # pandas DataFrame or None
@@ -72,12 +72,12 @@ class PacceWorker(QThread):
         self.kwargs = kwargs
 
     def run(self):
-        # Redirect stdout so print() calls from pacce are captured
+        # Redirect stdout so print() calls from saira are captured
         old_stdout = sys.stdout
         sys.stdout = _StreamRedirector(self.log_signal)
         try:
-            from pacce.pacce_wapper import pacce
-            result = pacce(**self.kwargs)
+            from saira.saira_wapper import saira
+            result = saira(**self.kwargs)
             self.finished_signal.emit(result)
         except Exception:
             tb = traceback.format_exc()
@@ -108,11 +108,11 @@ class _StreamRedirector(io.TextIOBase):
 # ---------------------------------------------------------------------------
 
 class MainWindow(QMainWindow):
-    """PACCE — Main application window."""
+    """SAIRA — Main application window."""
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("PACCE — Python Algorithm to Compute Continuum & Equivalent Widths")
+        self.setWindowTitle("SAIRA — Self-consistent Algorithm for spectral Indices measuRements and Analysis")
         self.resize(1200, 860)
         self.setStyleSheet(STYLESHEET)
 
@@ -172,7 +172,7 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(right_side, 1)
 
         # Status bar
-        self.statusBar().showMessage("Ready — Configure parameters and click Run PACCE.")
+        self.statusBar().showMessage("Ready — Configure parameters and click Run SAIRA.")
 
     # ----- Sidebar -----
 
@@ -187,7 +187,7 @@ class MainWindow(QMainWindow):
         layout.setSpacing(8)
 
         # Title
-        title = QLabel("PACCE")
+        title = QLabel("SAIRA")
         title.setStyleSheet(
             f"font-size: 20px; font-weight: 800; color: {ACCENT}; margin-bottom: 2px;"
         )
@@ -229,7 +229,7 @@ class MainWindow(QMainWindow):
         layout.addSpacing(16)
 
         # Run button
-        self.btn_run = QPushButton("▶  Run PACCE")
+        self.btn_run = QPushButton("▶  Run SAIRA")
         self.btn_run.setStyleSheet(
             f"background-color: {SUCCESS_COLOR}; color: white; font-weight: bold;"
             f"font-size: 14px; padding: 10px 16px; border-radius: 8px;"
@@ -467,7 +467,7 @@ class MainWindow(QMainWindow):
         Resolve (files, path_to_files) for the currently configured spectra
         source, or return (None, None) with a warning dialog if invalid.
         """
-        from pacce.pacce_wapper import list_spectrum_files
+        from saira.saira_wapper import list_spectrum_files
 
         is_table_mode = self.radio_table_mode.isChecked()
         filename = self.pick_spectrum_list.text() if is_table_mode else None
@@ -497,7 +497,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Missing Input", "Select an Index Definitions file first.")
             return
 
-        from pacce.pacce_wapper import read_idx_defs, get_spectra_wavelength_range
+        from saira.saira_wapper import read_idx_defs, get_spectra_wavelength_range
 
         try:
             idx_definitions = read_idx_defs(index_defs)
@@ -685,7 +685,7 @@ class MainWindow(QMainWindow):
         lay.addWidget(self.opt_all_plot_dir)
 
         self.opt_log_file = ToggleTextRow(
-            "Log File", placeholder="pacce_log.txt"
+            "Log File", placeholder="saira_log.txt"
         )
         lay.addWidget(self.opt_log_file)
 
@@ -772,7 +772,7 @@ class MainWindow(QMainWindow):
         return bottom
 
     # -----------------------------------------------------------------
-    # Resolution Validation & Run PACCE
+    # Resolution Validation & Run SAIRA
     # -----------------------------------------------------------------
 
     def _validate_resolution_settings(self):
@@ -858,7 +858,7 @@ class MainWindow(QMainWindow):
 
     def _on_run(self):
         if self.worker and self.worker.isRunning():
-            QMessageBox.warning(self, "Running", "PACCE is already running.")
+            QMessageBox.warning(self, "Running", "SAIRA is already running.")
             return
 
         is_table_mode = self.radio_table_mode.isChecked()
@@ -894,7 +894,7 @@ class MainWindow(QMainWindow):
         # Resolve which indices to run: a manual "Select Indices…" choice takes
         # precedence; otherwise auto-exclude indices whose Line Limits fall
         # outside the batch's wavelength coverage, confirmed once for the run.
-        from pacce.pacce_wapper import read_idx_defs, list_spectrum_files, get_spectra_wavelength_range, filter_idx_by_range
+        from saira.saira_wapper import read_idx_defs, list_spectrum_files, get_spectra_wavelength_range, filter_idx_by_range
 
         if self.custom_idx_definitions is not None:
             final_idx_definitions = self.custom_idx_definitions
@@ -927,7 +927,7 @@ class MainWindow(QMainWindow):
                         return
                     final_idx_definitions = base_idx_definitions[in_range]
 
-        # Build kwargs for pacce()
+        # Build kwargs for saira()
         kwargs = {
             "filename": filename,
             "path_to_files": path_to_files,
@@ -996,9 +996,9 @@ class MainWindow(QMainWindow):
         self.progress.setVisible(True)
         self.btn_run.setEnabled(False)
         self.btn_run.setText("⏳  Running…")
-        self.statusBar().showMessage("Running PACCE…")
+        self.statusBar().showMessage("Running SAIRA…")
 
-        self.worker = PacceWorker(kwargs)
+        self.worker = SairaWorker(kwargs)
         self.worker.log_signal.connect(self.log_console.append_log)
         self.worker.error_signal.connect(self._on_worker_error)
         self.worker.finished_signal.connect(self._on_worker_finished)
@@ -1010,14 +1010,14 @@ class MainWindow(QMainWindow):
     def _on_worker_finished(self, result):
         self.progress.setVisible(False)
         self.btn_run.setEnabled(True)
-        self.btn_run.setText("▶  Run PACCE")
+        self.btn_run.setText("▶  Run SAIRA")
 
         if result is not None and isinstance(result, pd.DataFrame):
             self.result_df = result
             self._populate_table(result)
             self.btn_export.setEnabled(True)
             self.btn_plot.setEnabled(True)
-            self.log_console.append_log("\n✅ PACCE finished successfully.")
+            self.log_console.append_log("\n✅ SAIRA finished successfully.")
             self.statusBar().showMessage("Done — Results available in the preview table.")
         else:
             self.statusBar().showMessage("Run finished with errors. Check the log.")
@@ -1047,7 +1047,7 @@ class MainWindow(QMainWindow):
         if self.result_df is None:
             return
         path, _ = QFileDialog.getSaveFileName(
-            self, "Export Results as CSV", "pacce_results.csv",
+            self, "Export Results as CSV", "saira_results.csv",
             "CSV Files (*.csv);;All Files (*)"
         )
         if path:
@@ -1185,7 +1185,7 @@ class MainWindow(QMainWindow):
 
     def _on_save_config(self):
         path, _ = QFileDialog.getSaveFileName(
-            self, "Save PACCE Configuration", "pacce_config.json",
+            self, "Save SAIRA Configuration", "saira_config.json",
             "JSON Files (*.json);;All Files (*)"
         )
         if path:
@@ -1196,7 +1196,7 @@ class MainWindow(QMainWindow):
 
     def _on_load_config(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, "Load PACCE Configuration", "",
+            self, "Load SAIRA Configuration", "",
             "JSON Files (*.json);;All Files (*)"
         )
         if path:
@@ -1213,7 +1213,7 @@ class MainWindow(QMainWindow):
 def main():
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
-    app.setApplicationName("PACCE")
+    app.setApplicationName("SAIRA")
 
     # Configure global font
     font = QFont("Inter", 10)
@@ -1233,7 +1233,7 @@ def main():
             splash_pix = pix.scaledToWidth(480, Qt.SmoothTransformation)
             splash = QSplashScreen(splash_pix, Qt.WindowStaysOnTopHint)
             splash.showMessage(
-                "  PACCE — Initializing…",
+                "  SAIRA — Initializing…",
                 Qt.AlignBottom | Qt.AlignLeft,
                 QColor("#FFFFFF"),
             )

@@ -2,10 +2,10 @@
   "input_mode": "extension",
   "file_extension": ".spec",
   "spectrum_list": "",
-  "spectra_dir": "/home/riffel/Dropbox/programas/Develp/pacce/pacce/examples/testfiles",
+  "spectra_dir": "/home/riffel/Dropbox/programas/Develp/pacce/saira/examples/testfiles",
   "idx_defs_index": 0,
   "idx_defs_text": "Riffel_2019_defs.ind",
-  "idx_defs_path": "/home/riffel/Dropbox/programas/Develp/pacce/pacce/suport_files/Riffel_2019_defs.ind",
+  "idx_defs_path": "/home/riffel/Dropbox/programas/Develp/pacce/saira/suport_files/Riffel_2019_defs.ind",
   "output_file": "measurements.csv",
   "enable_resolution": false,
   "sigma_ini": {
@@ -53,7 +53,7 @@
   },
   "single_plots": {
     "enabled": true,
-    "value": "/home/riffel/Dropbox/programas/Develp/pacce/pacce/examples/testfiles/figures"
+    "value": "/home/riffel/Dropbox/programas/Develp/pacce/saira/examples/testfiles/figures"
   },
   "all_plot": {
     "enabled": true,
@@ -61,10 +61,10 @@
   },
   "all_plot_dir": {
     "enabled": true,
-    "value": "/home/riffel/Dropbox/programas/Develp/pacce/pacce/examples/testfiles/figures"
+    "value": "/home/riffel/Dropbox/programas/Develp/pacce/saira/examples/testfiles/figures"
   },
   "log_file": {
     "enabled": true,
-    "value": "pacce.log"
+    "value": "saira.log"
   }
 }

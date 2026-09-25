@@ -1,5 +1,5 @@
 """
-custom_widgets.py — Reusable GUI widgets for the PACCE interface.
+custom_widgets.py — Reusable GUI widgets for the SAIRA interface.
 """
 
 import os

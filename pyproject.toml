@@ -3,9 +3,9 @@ requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pacce"
+name = "saira"
 version = "1.0.0"
-description = "Python Algorithm to Compute Continuum and Equivalent widths"
+description = "Self-consistent Algorithm for spectral Indices measuRements and Analysis"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
@@ -23,17 +23,17 @@ dependencies = [
 ]
 
 [project.scripts]
-pacce-gui = "pacce.gui.main_gui:main"
+saira-gui = "saira.gui.main_gui:main"
 
 [project.urls]
 Homepage = "https://github.com/rriffel/pacce"
 Repository = "https://github.com/rriffel/pacce"
 
 [tool.setuptools.packages.find]
-include = ["pacce*"]
+include = ["saira*"]
 
 [tool.setuptools.package-data]
-pacce = [
+saira = [
     "suport_files/*",
     "examples/**/*",
     "assets/*",

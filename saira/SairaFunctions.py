@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')  # figures are only ever saved to disk, never shown; the interactive
-                        # Qt backend is unsafe when pacce() runs in the GUI's worker QThread
+                        # Qt backend is unsafe when saira() runs in the GUI's worker QThread
 import matplotlib.pyplot as plt
 from scipy import interpolate
 from scipy import integrate

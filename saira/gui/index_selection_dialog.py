@@ -33,7 +33,7 @@ class IndexSelectionDialog(QDialog):
         self.wave_max = wave_max
 
         if wave_min is not None and wave_max is not None:
-            from pacce.pacce_wapper import filter_idx_by_range
+            from saira.saira_wapper import filter_idx_by_range
             self.in_range_mask = filter_idx_by_range(idx_definitions, wave_min, wave_max)
         else:
             self.in_range_mask = np.ones(len(idx_definitions), dtype=bool)
@@ -184,6 +184,6 @@ class IndexSelectionDialog(QDialog):
             "Index Files (*.ind);;All Files (*)"
         )
         if path:
-            from pacce.pacce_wapper import write_idx_defs
+            from saira.saira_wapper import write_idx_defs
             write_idx_defs(self.idx_definitions, path, self.get_selected_mask())
             QMessageBox.information(self, "Saved", f"Selection saved to {path}")

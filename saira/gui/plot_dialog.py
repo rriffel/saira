@@ -3,7 +3,7 @@ plot_dialog.py — Scatter-plot dialog for the Results Preview table.
 
 Lets the user plot any column, or an expression combining columns
 (e.g. `Mg2 - Fe5270`), against another, save the resulting figure, and
-overplot a second results file (e.g. another PACCE run or a model grid)
+overplot a second results file (e.g. another SAIRA run or a model grid)
 generated the same way — which may or may not include error columns.
 """
 
@@ -49,7 +49,7 @@ class PlotDialog(QDialog):
             "columns (e_<name>) aren't listed — check \"Error bars\" to plot "
             "them as error bars instead. Use \"Overplot File…\" to compare "
             "against another results CSV generated the same way; pick its "
-            "own X/Y below — it doesn't need error columns, and PACCE "
+            "own X/Y below — it doesn't need error columns, and SAIRA "
             "detects whether it has any."
         )
         info.setWordWrap(True)

@@ -1,1 +1,0 @@
-# PACCE GUI sub-package

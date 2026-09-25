@@ -1,5 +1,5 @@
 """
-constants.py — Shared styling constants for all PACCE GUI modules.
+constants.py — Shared styling constants for all SAIRA GUI modules.
 """
 
 # Styling constants

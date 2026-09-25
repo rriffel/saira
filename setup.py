@@ -1,18 +1,18 @@
 """
-    Install pacce package.
+    Install saira package.
 """
 
 from setuptools import setup, find_packages
 
 setup(
-    name="pacce",
+    name="saira",
     version="1.0.0",
-    description="Python Algorithm to Compute Continuum and Equivalent widths",
+    description="Self-consistent Algorithm for spectral Indices measuRements and Analysis",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
     packages=find_packages(),
     package_data={
-        "pacce": [
+        "saira": [
             "suport_files/*",
             "examples/**/*",
             "assets/*",

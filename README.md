@@ -1,21 +1,21 @@
 <p align="center">
-  <img src="pacce/assets/logo.jpg" alt="PACCE Logo" width="220">
+  <img src="saira/assets/logo.jpeg" alt="SAIRA Logo" width="220">
 </p>
 
-<h1 align="center">PACCE</h1>
+<h1 align="center">SAIRA</h1>
 
 <p align="center">
-  <strong>Python Algorithm to Compute Continuum and Equivalent widths</strong>
+  <strong>Self-consistent Algorithm for spectral Indices measuRements and Analysis</strong>
 </p>
 
-PACCE measures spectral indices — equivalent widths and breaks — on 1-D spectra, and takes care of
+SAIRA measures spectral indices — equivalent widths and breaks — on 1-D spectra, and takes care of
 the boring-but-important bits along the way: broadening spectra to a common resolution, correcting
 for redshift, propagating errors. Everything comes back as a `pandas` DataFrame, so it drops straight
 into whatever Python workflow you're already using. Because observations and models can be degraded
 to the same resolution before measuring, you can compare the two directly instead of fighting with
 unit conversions and ad-hoc scripts every time.
 
-This is a modernized version of the original PACCE code ([Riffel & Vale 2011, Ap&SS, 334, 351](https://ui.adsabs.harvard.edu/abs/2011Ap%26SS.334..351R)).
+This is a modernized version of the original SAIRA code ([Riffel & Vale 2011, Ap&SS, 334, 351](https://ui.adsabs.harvard.edu/abs/2011Ap%26SS.334..351R)).
 It now also ships with a PyQt5 desktop GUI, if you'd rather point-and-click than write a script.
 
 ---
@@ -28,23 +28,23 @@ system Python — one less thing to worry about later.
 ### Conda / Mamba
 
 ```bash
-conda create -n pacce_env python=3.12 -y
-conda activate pacce_env
+conda create -n saira_env python=3.12 -y
+conda activate saira_env
 ```
 
 ### Or a plain venv
 
 ```bash
-python3 -m venv pacce_env
+python3 -m venv saira_env
 
 # Linux / macOS
-source pacce_env/bin/activate
+source saira_env/bin/activate
 
 # Windows
-pacce_env\Scripts\activate
+saira_env\Scripts\activate
 ```
 
-### Then install PACCE itself
+### Then install SAIRA itself
 
 Straight from GitHub:
 
@@ -71,25 +71,25 @@ Everything below needs Python 3.10+, plus `astropy`, `pandas`, `scipy`, `matplot
 
 ## The GUI
 
-If you'd rather not write Python, there's a desktop interface for configuring and running PACCE
+If you'd rather not write Python, there's a desktop interface for configuring and running SAIRA
 interactively.
 
 <p align="center">
-  <img src="pacce/assets/gui_screenshot.png" alt="PACCE GUI Main Screen" width="900">
+  <img src="saira/assets/gui_screenshot.png" alt="SAIRA GUI Main Screen" width="900">
 </p>
 
 Launch it any of these ways:
 
 ```bash
-pacce-gui          # console script, after pip install
-python -m pacce     # same thing, as a module
+saira-gui          # console script, after pip install
+python -m saira     # same thing, as a module
 ```
 
 or, from inside Python:
 
 ```python
-import pacce
-pacce.gui()
+import saira
+saira.gui()
 ```
 
 A quick tour of what's in there:
@@ -131,9 +131,9 @@ with what values, where every file ended up — and the whole configuration can 
 ### A table listing your spectra
 
 ```python
-from pacce import pacce
+from saira import saira
 
-result = pacce(
+result = saira(
     filename='spectra_list.dat',        # ASCII table with a 'file' column
     path_to_files='./spectra/',         # where the spectra actually live
     IndexDefs='Riffel_2019_defs.ind',   # index definitions file
@@ -146,9 +146,9 @@ result = pacce(
 No list file needed — it'll find everything matching the pattern you give it:
 
 ```python
-from pacce import pacce
+from saira import saira
 
-result = pacce(
+result = saira(
     path_to_files='./spectra/',
     file_extension='.txt',              # '.txt', '.dat', '*.spec', '*', whatever
     IndexDefs='Riffel_2019_defs.ind',
@@ -170,9 +170,9 @@ on why, and what gets validated, [further down](#a-word-on-resolution-and-redshi
 ### Redshift correction works the same way
 
 ```python
-from pacce import pacce
+from saira import saira
 
-result = pacce(
+result = saira(
     path_to_files='./spectra/',
     file_extension='.txt',
     IndexDefs='Riffel_2019_defs.ind',
@@ -188,11 +188,11 @@ The GUI's "Select Indices…" check is really just a couple of plain functions u
 do the same filtering from a script:
 
 ```python
-from pacce.pacce_wapper import (
+from saira.saira_wapper import (
     list_spectrum_files, get_spectra_wavelength_range, filter_idx_by_range, write_idx_defs,
 )
-from pacce.PacceFunctions import read_idx_defs
-from pacce import pacce
+from saira.SairaFunctions import read_idx_defs
+from saira import saira
 
 files = list_spectrum_files(path_to_files='./spectra/', file_extension='.txt')
 wave_min, wave_max = get_spectra_wavelength_range('./spectra/', files)
@@ -204,11 +204,11 @@ print(f"{(~in_range).sum()} of {len(idx_definitions)} indices fall outside "
 
 # either save the filtered list as a new .ind file for later...
 write_idx_defs(idx_definitions, 'defs_in_range.ind', in_range)
-result = pacce(path_to_files='./spectra/', file_extension='.txt',
+result = saira(path_to_files='./spectra/', file_extension='.txt',
                 IndexDefs='defs_in_range.ind', output_file='measurements.csv')
 
-# ...or just hand the filtered array straight to pacce(), no file needed
-result = pacce(path_to_files='./spectra/', file_extension='.txt',
+# ...or just hand the filtered array straight to saira(), no file needed
+result = saira(path_to_files='./spectra/', file_extension='.txt',
                 IndexDefs=idx_definitions[in_range], output_file='measurements.csv')
 ```
 
@@ -221,9 +221,9 @@ None of this needs a notebook — it's all just as happy running from a shell.
 ### Launching the GUI
 
 ```bash
-pacce-gui
+saira-gui
 # or
-python -m pacce
+python -m saira
 ```
 
 ### Running a script
@@ -231,10 +231,10 @@ python -m pacce
 Any of the examples above work as a plain `.py` file:
 
 ```bash
-cat > run_pacce.py << 'EOF'
-from pacce import pacce
+cat > run_saira.py << 'EOF'
+from saira import saira
 
-result = pacce(
+result = saira(
     path_to_files='./spectra/',
     file_extension='.txt',
     IndexDefs='Riffel_2019_defs.ind',
@@ -246,7 +246,7 @@ result = pacce(
 print(result.head())
 EOF
 
-python run_pacce.py
+python run_saira.py
 ```
 
 With `print_log` left unset, everything prints straight to the terminal as it runs — a short summary
@@ -255,7 +255,7 @@ of what's turned on, then progress per spectrum:
 ```
 Found 12 spectra matching '*.txt' in './spectra/'
 ============================================================
-PACCE run configuration
+SAIRA run configuration
 ============================================================
 Resolution correction: True
   sigma_ini=180.0  FWHM_ini=None  R_ini=None
@@ -276,12 +276,12 @@ later rather than watch it live:
 
 ```bash
 python -c "
-from pacce import pacce
-pacce(path_to_files='./spectra/', file_extension='.txt',
+from saira import saira
+saira(path_to_files='./spectra/', file_extension='.txt',
       IndexDefs='Riffel_2019_defs.ind', output_file='measurements.csv',
-      print_log='pacce.log')
+      print_log='saira.log')
 "
-tail -f pacce.log
+tail -f saira.log
 ```
 
 ---
@@ -336,7 +336,7 @@ GUI's console — what's active, with what values, and where things are being sa
 
 ```
 ============================================================
-PACCE run configuration
+SAIRA run configuration
 ============================================================
 Resolution correction: True
   sigma_ini=180.0  FWHM_ini=None  R_ini=None
@@ -359,11 +359,11 @@ Mgb  |  5160.1250-5192.6250  |  5142.6250-5161.3750, 5191.3750-5206.3750  |  (Tr
 
 Name, the line's wavelength range (set both limits equal if it's a break index rather than a line),
 the continuum bands as comma-separated pairs, and a reference. A couple of ready-made definition files
-live in `pacce/suport_files/` — `Riffel_2019_defs.ind` and `less_defs.ind`.
+live in `saira/suport_files/` — `Riffel_2019_defs.ind` and `less_defs.ind`.
 
 If you're mixing indices from different spectral regions (optical + near-IR, say), some will
 inevitably fall outside what a given spectrum actually covers. Rather than let those quietly come back
-as `NaN`, PACCE can catch it upfront — see [§Dropping indices that fall outside your spectra's range](#dropping-indices-that-fall-outside-your-spectras-range)
+as `NaN`, SAIRA can catch it upfront — see [§Dropping indices that fall outside your spectra's range](#dropping-indices-that-fall-outside-your-spectras-range)
 for the scripted version, or the GUI's "Select Indices…" dialog for the point-and-click one.
 
 ---
@@ -385,7 +385,7 @@ Two ways to get them:
 Spectral convolution uses a variable-sigma Gaussian kernel, done in Fourier space following
 [Cappellari (2022)](https://ui.adsabs.harvard.edu/abs/2022arXiv220814974C), with error propagation
 based on [Klein (2021)](https://ui.adsabs.harvard.edu/abs/2021RNAAS...5...39K). This is what lets
-PACCE handle wavelength-dependent resolution properly instead of assuming a single sigma across the
+SAIRA handle wavelength-dependent resolution properly instead of assuming a single sigma across the
 whole spectrum.
 
 ---
@@ -401,11 +401,9 @@ Two notebooks in the repo walk through actual use cases:
 
 ---
 
----
-
 ## Citing this
 
-If PACCE was useful for a paper, please cite:
+If SAIRA was useful for a paper, please cite:
 
 > Riffel, R. & Vale, T. B., 2011, Ap&SS, 334, 351
 

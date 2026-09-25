@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from pacce.PacceFunctions import *
+from saira.SairaFunctions import *
 
 
 def _has_positive(value):
@@ -34,7 +34,7 @@ def _load_idx_definitions(index_defs):
 def list_spectrum_files(filename=None, path_to_files='./', file_extension=None):
     """
     Resolve the list of spectrum file names for a run, using the same logic
-    pacce() uses internally: a table with a 'file' column if given, otherwise
+    saira() uses internally: a table with a 'file' column if given, otherwise
     directory discovery by extension/pattern.
     """
     if filename is not None and os.path.isfile(filename):
@@ -102,7 +102,7 @@ def write_idx_defs(idx_definitions, path, mask=None):
             f.write(f"{line['name']} | {defs_str} | {conts_str} | {line['ref']}\n")
 
 
-def pacce(filename = None,
+def saira(filename = None,
           path_to_files = './',
           IndexDefs = None,
           output_file = 'demo.txt',
@@ -131,9 +131,9 @@ def pacce(filename = None,
      This function computes EW of emission/absorption lines from an input table or directory of spectra.
      It returns the line ID, Equivalent Width, Equivalent Width errors, Flux and line SNR.
 
-     usage: pacce(filename='spectra.dat', path_to_files='./spectra/', IndexDefs='defs.ind')
+     usage: saira(filename='spectra.dat', path_to_files='./spectra/', IndexDefs='defs.ind')
             or
-            pacce(path_to_files='./spectra/', file_extension='.txt', IndexDefs='defs.ind')
+            saira(path_to_files='./spectra/', file_extension='.txt', IndexDefs='defs.ind')
 
      filename: input ASCII table name with 'file' column (optional if file_extension is used)
      path_to_files: path to directory containing spectra
@@ -199,7 +199,7 @@ def pacce(filename = None,
     # visible in the log, whether it goes to a file or to the GUI console.
     # ------------------------------------------------------------------
     print('=' * 60)
-    print('PACCE run configuration')
+    print('SAIRA run configuration')
     print('=' * 60)
     print(f'Resolution correction: {do_resolution}')
     if do_resolution:
