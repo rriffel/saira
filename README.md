@@ -15,7 +15,7 @@ into whatever Python workflow you're already using. Because observations and mod
 to the same resolution before measuring, you can compare the two directly instead of fighting with
 unit conversions and ad-hoc scripts every time.
 
-This is a modernized version of the original SAIRA code ([Riffel & Vale 2011, Ap&SS, 334, 351](https://ui.adsabs.harvard.edu/abs/2011Ap%26SS.334..351R)).
+SAIRA is a Python rewrite and extension of PACCE, our original Perl code for measuring continuum and equivalent widths ([Riffel & Vale 2011, Ap&SS, 334, 351](https://ui.adsabs.harvard.edu/abs/2011Ap%26SS.334..351R)).
 It now also ships with a PyQt5 desktop GUI, if you'd rather point-and-click than write a script.
 
 ---
@@ -49,17 +49,13 @@ saira_env\Scripts\activate
 Straight from GitHub:
 
 ```bash
-# public repo (or via an HTTPS token)
-pip install git+https://github.com/rriffel/saira.git@paccegui
-
-# private repo, over SSH
-pip install git+ssh://git@github.com/rriffel/saira.git@paccegui
+pip install git+https://github.com/rriffel/saira.git
 ```
 
 Or if you want to poke at the code / contribute, clone it and install in editable mode:
 
 ```bash
-git clone -b paccegui https://github.com/rriffel/saira.git
+git clone https://github.com/rriffel/saira.git
 cd saira
 pip install -e .
 ```
@@ -403,7 +399,7 @@ Two notebooks in the repo walk through actual use cases:
 
 ## Citing this
 
-If SAIRA was useful for a paper, please cite:
+If SAIRA was useful for a paper, please cite the original PACCE paper, on which SAIRA is based:
 
 > Riffel, R. & Vale, T. B., 2011, Ap&SS, 334, 351
 
@@ -411,4 +407,4 @@ If SAIRA was useful for a paper, please cite:
 
 ## License
 
-Open source — see the repository for the license terms.
+SAIRA is released under the MIT License — see [LICENSE](LICENSE) for the full text.
