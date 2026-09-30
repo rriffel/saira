@@ -110,6 +110,67 @@ def computeEW(cont_l,cont_f,line_l,line_f):
         
     return EW
 
+def _is_missing(value):
+    '''True for None and for a scalar NaN (e.g. an empty cell of the input table).'''
+    if value is None:
+        return True
+    try:
+        return bool(np.ndim(value) == 0 and np.isnan(value))
+    except TypeError:
+        return False
+
+
+def read_resolution_curve(value, wave):
+    '''
+    Returns a resolution value (sigma, FWHM or R) for every pixel of wave.
+
+    Parameters:
+    value: a number (constant resolution); a 1D array with the same size as wave;
+        a 2D array or the path to an ascii file whose first two columns are the
+        wavelength (A) and the resolution value. Curves are linearly interpolated
+        onto wave and kept constant beyond their limits.
+    wave: wavelength array of the spectrum
+    '''
+    if isinstance(value, str):
+        data = np.genfromtxt(value, comments='#')
+        if data.ndim != 2 or data.shape[1] < 2 or np.isnan(data[:, 0]).all():
+            raise ValueError(
+                f"Resolution file '{value}' must have at least two numeric columns: "
+                f"wavelength (A) and resolution value. Tables with one value per spectrum "
+                f"(file, value) are only accepted for the initial resolution and the redshift."
+            )
+        value = data[:, :2]
+
+    arr = np.asarray(value, dtype=float)
+    if arr.ndim == 0:
+        return float(arr)
+    if arr.ndim == 2:
+        arr = arr[np.isfinite(arr).all(axis=1)]
+        order = np.argsort(arr[:, 0])
+        return np.interp(wave, arr[order, 0], arr[order, 1])
+    if arr.shape == np.shape(wave):
+        return arr
+    raise ValueError(
+        f"Resolution array has {arr.size} values but the spectrum has {np.size(wave)} pixels; "
+        f"give a (wavelength, value) curve instead."
+    )
+
+
+def resolution_to_fwhm(wave, sigma=None, R=None, FWHM=None):
+    '''
+    Converts a resolution given as sigma (km/s), R (lambda/d_lambda) or FWHM (A) into a
+    FWHM (A) for every pixel of wave. If more than one is given, sigma takes precedence
+    over R, and R over FWHM. Returns None if none is given.
+    '''
+    if not _is_missing(sigma):
+        return (read_resolution_curve(sigma, wave)*2.355/c)*wave
+    if not _is_missing(R):
+        return np.divide(wave, read_resolution_curve(R, wave))
+    if not _is_missing(FWHM):
+        return read_resolution_curve(FWHM, wave)
+    return None
+
+
 def computeBREAK(red_l,red_f,blue_l,blue_f, ax=None, name_fig=None):
     
     ratio = red_f/blue_f
@@ -360,41 +421,12 @@ def eqw(wave,
 
 
     #redshift correction
-    if z is not None:
+    if not _is_missing(z):
         wave = wave/(1+z)
-    
-    #checking for a file with the sigma/FWHM info
-    try:
-        sigma_ini = np.genfromtxt(sigma_ini)
-        sigma_ini = sigma_ini[:,1]
-    except:
-        try:
-            FWHM_ini = np.genfromtxt(FWHM_ini)
-            FWHM_ini = FWHM_ini[:,1]
-        except:
-            try:
-               R_ini = np.genfromtxt(R_ini) 
-               R_ini = R_ini[:,1]
-            except:
-                pass
 
-            
-    
-    # converting sigma or R to FWHM
-    try:
-        FWHM_ini = (sigma_ini*2.355/c)*wave
-    except:
-        try:
-            FWHM_ini = np.divide(wave,R_ini)
-        except:
-            pass #print('Using FWHM_ini provided', end='\r')
-    try:
-        FWHM_fin = (sigma_fin*2.355/c)*wave
-    except:
-        try:
-            FWHM_fin = np.divide(wave,R_fin)
-        except:
-            pass #print('Using FWHM_fin provided', end='\r')
+    # converting sigma, R or FWHM (scalars, arrays or wavelength-dependent curves) to FWHM in A
+    FWHM_ini = resolution_to_fwhm(wave, sigma=sigma_ini, R=R_ini, FWHM=FWHM_ini)
+    FWHM_fin = resolution_to_fwhm(wave, sigma=sigma_fin, R=R_fin, FWHM=FWHM_fin)
 
     # Validate resolution parameters before convolution
     if (FWHM_ini is not None) and (FWHM_fin is not None):
