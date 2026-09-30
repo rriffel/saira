@@ -335,14 +335,19 @@ Besides a single number, the resolution parameters and `z` accept:
 | One value per spectrum | `sigma_ini`/`FWHM_ini`/`R_ini` and `z` | list/array with one value per spectrum (same order as the files), or a file with a `file` column and a `sigma`/`FWHM`/`R`/`z` column (otherwise the 2nd column is used) |
 
 The two kinds of file are told apart by their first column: numbers mean a wavelength curve, file
-names mean one value per spectrum. Both ship with the package:
+names mean one value per spectrum. Only the first two columns of a curve are read, so the E-MILES
+resolution ships as two files: `suport_files/e-miles_spectral_resolution_fwhm.dat` (wavelength, FWHM
+in Å; use it for `FWHM_ini`/`FWHM_fin`) and `suport_files/e-miles_spectral_resolution_sigma.dat`
+(wavelength, $\sigma$ in km/s; use it for `sigma_ini`/`sigma_fin`). Either can be mixed with a fixed
+value on the other side, e.g. `FWHM_ini=<curve>` with `R_fin=1000`. Examples of both kinds of file
+ship with the package:
 
 ```python
 from saira import saira
 
 # E-MILES models: wavelength-dependent FWHM curve (columns: wavelength, FWHM)
 models = saira(filename='miles_table.dat', path_to_files='models/', IndexDefs='less_defs.ind',
-               do_resolution=True, FWHM_ini='suport_files/e-miles_spectral_resolution.dat',
+               do_resolution=True, FWHM_ini='suport_files/e-miles_spectral_resolution_fwhm.dat',
                sigma_fin=300.)
 
 # SDSS spectra found by extension: sigma and z per spectrum (columns: file, sigma, z)
