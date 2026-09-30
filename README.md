@@ -99,7 +99,10 @@ resolution changes (convolving to a common $\sigma$, FWHM, or $R$) if you turn *
 off by default and need their own checkbox — nothing happens automatically just because your table
 happens to have a `z` or `sigma` column. There's also a sanity check built in: it won't let you
 convolve toward a *sharper* resolution than you started with, and it'll tell you if you've turned
-resolution changes on without giving it both a starting point and a target.
+resolution changes on without giving it both a starting point and a target. Every field has a
+**Value / File** selector: pick "File" to give a wavelength-dependent resolution curve, or one `z` /
+initial resolution per spectrum (see [below](#arrays-files-and-per-spectrum-values) for the formats) —
+handy in directory mode, where there's no input table to carry those columns.
 
 **Step 3 – Other Settings.** Pick how errors get estimated — the analytic equation from
 [Vollmann & Eversberg (2006)](https://doi.org/10.1002/asna.2006), Monte Carlo simulation, or don't
@@ -321,6 +324,36 @@ wavelength-dependent FWHM in Å:
 
 - from $\sigma$ (km/s): $\text{FWHM}(\lambda) = (\sigma \cdot 2.355 / c) \cdot \lambda$
 - from $R$: $\text{FWHM}(\lambda) = \lambda / R$
+
+### Arrays, files and per-spectrum values
+
+Besides a single number, the resolution parameters and `z` accept:
+
+| What | Accepted by | Format |
+|---|---|---|
+| Wavelength-dependent curve | `sigma_ini`/`FWHM_ini`/`R_ini` and `sigma_fin`/`FWHM_fin`/`R_fin` | file (or 2-column array) with wavelength (Å) and value; linearly interpolated onto each spectrum and kept constant beyond its ends. A 1-D array with one value per pixel also works. |
+| One value per spectrum | `sigma_ini`/`FWHM_ini`/`R_ini` and `z` | list/array with one value per spectrum (same order as the files), or a file with a `file` column and a `sigma`/`FWHM`/`R`/`z` column (otherwise the 2nd column is used) |
+
+The two kinds of file are told apart by their first column: numbers mean a wavelength curve, file
+names mean one value per spectrum. Both ship with the package:
+
+```python
+from saira import saira
+
+# E-MILES models: wavelength-dependent FWHM curve (columns: wavelength, FWHM)
+models = saira(filename='miles_table.dat', path_to_files='models/', IndexDefs='less_defs.ind',
+               do_resolution=True, FWHM_ini='suport_files/e-miles_spectral_resolution.dat',
+               sigma_fin=300.)
+
+# SDSS spectra found by extension: sigma and z per spectrum (columns: file, sigma, z)
+data = saira(path_to_files='sdss_example/', file_extension='.txt', IndexDefs='less_defs.ind',
+             do_resolution=True, sigma_ini='examples/sdss_table_example.dat', sigma_fin=300.,
+             do_redshift=True, z='examples/sdss_table_example.dat')
+```
+
+Columns of the input table (`sigma`, `FWHM`, `R`, `z`) always take precedence over these parameters.
+If more than one initial (or target) resolution is given, $\sigma$ wins over $R$, and $R$ over FWHM.
+The wavelengths of a curve are those of the spectrum *after* the redshift correction.
 
 A couple of guardrails are built in. Convolution can only broaden a spectrum, never sharpen it, so if
 you ask for a target resolution higher than the starting one, you get a clear `ValueError` (or a

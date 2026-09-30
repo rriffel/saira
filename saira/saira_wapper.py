@@ -1,6 +1,7 @@
 import os
 import sys
 import fnmatch
+import re
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -9,19 +10,103 @@ from saira.SairaFunctions import *
 
 
 def _has_positive(value):
-    """True if value is not None and can be interpreted as a number > 0."""
+    """
+    True if value is a number > 0, an array with any value > 0, or the path
+    to an existing file (e.g. a wavelength-dependent resolution curve).
+    """
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return os.path.isfile(value)
     try:
-        return value is not None and float(value) > 0
+        arr = np.asarray(value, dtype=float)
     except (TypeError, ValueError):
         return False
+    arr = arr[np.isfinite(arr)]
+    return bool(arr.size) and bool((arr > 0).any())
 
 
 def _col_has_positive(col):
-    """True if a table column has at least one numeric value > 0."""
+    """True if at least one entry of a table column satisfies _has_positive."""
+    return any(_has_positive(value) for value in col)
+
+
+def _read_per_spectrum_file(path, column):
+    """
+    Read a table with one value per spectrum, e.g.
+
+        file                      sigma     z
+        spec-0393-51794-0328.txt  222.0465  0.05907
+
+    The first column (or a column named 'file') holds the spectrum names and the
+    values are taken from the column named `column` (sigma, FWHM, R or z) or,
+    if there is none, from the second column. Returns a {file name: value} dict,
+    or None if the file is a wavelength-dependent curve (numeric first column).
+    """
+    with open(path) as f:
+        first_line = next((line for line in f if line.strip() and not line.lstrip().startswith('#')), '')
+    tokens = re.split(r'[,\s]+', first_line.strip())
+    if len(tokens) < 2 or _is_number(tokens[0]):
+        return None
+
+    header = None if _is_number(tokens[1]) else 'infer'
+    table = pd.read_csv(path, sep=r'[,\s]+', engine='python', comment='#', header=header)
+    if header is None:
+        table.columns = ['file', column] + [f'col{i}' for i in range(2, table.shape[1])]
+
+    key = 'file' if 'file' in table.columns else table.columns[0]
+    value_col = column if column in table.columns else [c for c in table.columns if c != key][0]
+    names = table[key].astype(str)
+    values = pd.to_numeric(table[value_col], errors='coerce')
+    mapping = dict(zip(names, values))
+    mapping.update(zip(names.map(os.path.basename), values))
+    return mapping
+
+
+def _is_number(text):
     try:
-        return bool((pd.to_numeric(col, errors='coerce') > 0).any())
-    except Exception:
+        float(text)
+        return True
+    except ValueError:
         return False
+
+
+def _fill_per_spectrum_column(file_table, column, value, allow_curve=True):
+    """
+    Fill file_table[column] from `value`, unless the input table already has that
+    column (the table always takes precedence). `value` may be a number, a list or
+    1D array with one value per spectrum, the path to a per-spectrum table (see
+    _read_per_spectrum_file) or, when allow_curve is True, anything accepted by
+    read_resolution_curve (same curve for every spectrum).
+    """
+    if column in file_table.columns:
+        if value is not None:
+            print(f"Note: using the '{column}' column of the input table; the {column} parameter is ignored.")
+        return
+
+    n_files = len(file_table)
+    if isinstance(value, str) and os.path.isfile(value):
+        mapping = _read_per_spectrum_file(value, column)
+        if mapping is not None:
+            names = file_table['file'].astype(str)
+            values = [mapping.get(n, mapping.get(os.path.basename(n), np.nan)) for n in names]
+            missing = [n for n, v in zip(names, values) if pd.isna(v)]
+            if missing:
+                raise ValueError(
+                    f"'{value}' has no {column} value for {len(missing)} spectra: "
+                    + ", ".join(missing[:10]) + (" ..." if len(missing) > 10 else "")
+                )
+            file_table[column] = values
+            return
+        if not allow_curve:
+            raise ValueError(
+                f"'{value}' must list the spectra and their {column} values (columns: file, {column})."
+            )
+    elif isinstance(value, (list, tuple, np.ndarray)) and np.ndim(value) == 1 and len(value) == n_files:
+        file_table[column] = list(value)
+        return
+
+    file_table[column] = pd.Series([value] * n_files, index=file_table.index, dtype=object)
 
 
 def _load_idx_definitions(index_defs):
@@ -175,22 +260,21 @@ def saira(filename = None,
         original_input = pd.DataFrame({'file': matched_files})
 
     file_table =  original_input.copy()
-    # check if in the table there is either FWHM (A), sigma (km/s) and R (lambda/d_lambda)
+    # check if in the table there is either FWHM (A), sigma (km/s) and R (lambda/d_lambda).
+    # Otherwise, the initial resolution and the redshift can be given as a single value,
+    # one value per spectrum (list or file with file/value columns) or, for the
+    # resolution, a wavelength-dependent curve (file or array with wavelength/value).
     if do_resolution:
-        if 'FWHM' not in file_table:
-            file_table['FWHM'] = FWHM_ini
-        if 'sigma' not in file_table:
-            file_table['sigma'] = sigma_ini
-        if 'R' not in file_table:
-            file_table['R'] = R_ini
+        _fill_per_spectrum_column(file_table, 'FWHM', FWHM_ini)
+        _fill_per_spectrum_column(file_table, 'sigma', sigma_ini)
+        _fill_per_spectrum_column(file_table, 'R', R_ini)
     else:
         file_table['FWHM'] = None
         file_table['sigma'] = None
         file_table['R'] = None
 
     if do_redshift:
-        if 'z' not in file_table:
-            file_table['z'] = z
+        _fill_per_spectrum_column(file_table, 'z', z, allow_curve=False)
     else:
         file_table['z'] = None
 
@@ -281,10 +365,11 @@ def saira(filename = None,
         #actual code runs
         head_measurements, measurements = eqw(wave=wave, flux=flux, idx_definitions=idx_definitions,
                                             error=error, simulate=simulate, sigma_fin=sigma_fin,
-                                            sigma_ini = file_table.loc[file]['sigma'],
+                                            sigma_ini = file_table.loc[file, 'sigma'],
                                             FWHM_fin = FWHM_fin,
-                                            FWHM_ini = file_table.loc[file]['FWHM'], R_fin=R_fin,
-                                            R_ini=R_ini, z = file_table.loc[file]['z'], path=path,
+                                            FWHM_ini = file_table.loc[file, 'FWHM'], R_fin=R_fin,
+                                            R_ini = file_table.loc[file, 'R'],
+                                            z = file_table.loc[file, 'z'], path=path,
                                             AllIndicesPlot=pltallindices,
                                             negative_Ew_to_zero=negative_Ew_to_zero
                                             )

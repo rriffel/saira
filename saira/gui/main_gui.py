@@ -26,11 +26,30 @@ from PyQt5.QtGui import QFont, QIcon, QPixmap, QColor
 
 from . import constants
 from .custom_widgets import (
-    FilePickerRow, ToggleDoubleRow,
+    FilePickerRow, ToggleValueFileRow,
     ToggleTextRow, ToggleFilePickerRow, LogConsole
 )
 from .index_selection_dialog import IndexSelectionDialog
 from .plot_dialog import PlotDialog
+
+
+# Tooltips describing the files accepted by the Value/File rows
+RES_INI_FILE_TOOLTIP = (
+    "File mode accepts either:\n"
+    "  • a wavelength-dependent curve: two columns, wavelength (Å) and value,\n"
+    "    interpolated onto each spectrum (e.g. suport_files/e-miles_spectral_resolution.dat\n"
+    "    for FWHM_ini);\n"
+    "  • one value per spectrum: columns 'file' and 'sigma' / 'FWHM' / 'R'\n"
+    "    (e.g. examples/sdss_table_example.dat for σ_ini)."
+)
+RES_FIN_FILE_TOOLTIP = (
+    "File mode accepts a wavelength-dependent curve: two columns,\n"
+    "wavelength (Å) and value, interpolated onto each spectrum."
+)
+Z_FILE_TOOLTIP = (
+    "File mode accepts one redshift per spectrum: columns 'file' and 'z'\n"
+    "(e.g. examples/sdss_table_example.dat)."
+)
 
 
 # ---------------------------------------------------------------------------
@@ -528,7 +547,7 @@ class MainWindow(QMainWindow):
     # -----------------------------------------------------------------
 
     def _create_panel_resolution(self):
-        self.grp_resolution = QGroupBox("Redshift & Resolution")
+        self.grp_resolution = QGroupBox("Redshift && Resolution")
         lay = QVBoxLayout(self.grp_resolution)
         lay.setSpacing(8)
 
@@ -539,17 +558,21 @@ class MainWindow(QMainWindow):
         self.chk_enable_redshift.toggled.connect(self._on_redshift_flag_toggled)
         lay.addWidget(self.chk_enable_redshift)
 
-        self.opt_z = ToggleDoubleRow(
-            "Redshift (z)", suffix="", max_val=20.0, decimals=8, default_val=0.0
+        self.opt_z = ToggleValueFileRow(
+            "Redshift (z)", suffix="", max_val=20.0, decimals=8, default_val=0.0,
+            file_tooltip=Z_FILE_TOOLTIP
         )
         self.opt_z.setEnabled(False)
         lay.addWidget(self.opt_z)
 
         info = QLabel(
             "Resolution changes are optional and, when enabled, are applied after "
-            "the redshift correction above. Initial values may also be provided "
-            "per-spectrum in the input table (columns: sigma, FWHM, R), but they "
-            "are only used when the flag below is enabled."
+            "the redshift correction above. Each value can be a single number or a "
+            "file (choose \"File\"): a wavelength-dependent curve (columns: "
+            "wavelength, value) or, for the initial resolution and z, one value per "
+            "spectrum (columns: file, value). Values may also come from the input "
+            "table (columns: sigma, FWHM, R, z), which take precedence. Enable only "
+            "one initial and one target resolution."
         )
         info.setProperty("role", "mutedLabel")
         info.setStyleSheet("font-size: 12px; margin-top: 8px; margin-bottom: 4px;")
@@ -562,33 +585,39 @@ class MainWindow(QMainWindow):
         self.chk_enable_resolution.toggled.connect(self._on_resolution_flag_toggled)
         lay.addWidget(self.chk_enable_resolution)
 
-        self.opt_sigma_ini = ToggleDoubleRow(
-            "σ_ini", suffix="km/s", max_val=999999, decimals=2
+        self.opt_sigma_ini = ToggleValueFileRow(
+            "σ_ini", suffix="km/s", max_val=999999, decimals=2,
+            file_tooltip=RES_INI_FILE_TOOLTIP
         )
         lay.addWidget(self.opt_sigma_ini)
 
-        self.opt_sigma_fin = ToggleDoubleRow(
-            "σ_fin", suffix="km/s", max_val=999999, decimals=2
+        self.opt_sigma_fin = ToggleValueFileRow(
+            "σ_fin", suffix="km/s", max_val=999999, decimals=2,
+            file_tooltip=RES_FIN_FILE_TOOLTIP
         )
         lay.addWidget(self.opt_sigma_fin)
 
-        self.opt_fwhm_ini = ToggleDoubleRow(
-            "FWHM_ini", suffix="Å", max_val=999999, decimals=4
+        self.opt_fwhm_ini = ToggleValueFileRow(
+            "FWHM_ini", suffix="Å", max_val=999999, decimals=4,
+            file_tooltip=RES_INI_FILE_TOOLTIP
         )
         lay.addWidget(self.opt_fwhm_ini)
 
-        self.opt_fwhm_fin = ToggleDoubleRow(
-            "FWHM_fin", suffix="Å", max_val=999999, decimals=4
+        self.opt_fwhm_fin = ToggleValueFileRow(
+            "FWHM_fin", suffix="Å", max_val=999999, decimals=4,
+            file_tooltip=RES_FIN_FILE_TOOLTIP
         )
         lay.addWidget(self.opt_fwhm_fin)
 
-        self.opt_r_ini = ToggleDoubleRow(
-            "R_ini", suffix="λ/Δλ", max_val=999999, decimals=1
+        self.opt_r_ini = ToggleValueFileRow(
+            "R_ini", suffix="λ/Δλ", max_val=999999, decimals=1,
+            file_tooltip=RES_INI_FILE_TOOLTIP
         )
         lay.addWidget(self.opt_r_ini)
 
-        self.opt_r_fin = ToggleDoubleRow(
-            "R_fin", suffix="λ/Δλ", max_val=999999, decimals=1
+        self.opt_r_fin = ToggleValueFileRow(
+            "R_fin", suffix="λ/Δλ", max_val=999999, decimals=1,
+            file_tooltip=RES_FIN_FILE_TOOLTIP
         )
         lay.addWidget(self.opt_r_fin)
 
@@ -789,75 +818,74 @@ class MainWindow(QMainWindow):
         c_kms = 299792.458
         ref_wave = 5000.0  # reference wavelength in Angstroms for equivalence comparison
 
-        # Resolution correction is enabled, so at least one "ini" and one "fin"
-        # value (> 0) must be provided — otherwise there is nothing to convolve.
-        if not (self.opt_fwhm_ini.is_enabled() or self.opt_sigma_ini.is_enabled()
-                or self.opt_r_ini.is_enabled()):
+        ini_rows = [("σ_ini", self.opt_sigma_ini, "sigma"),
+                    ("FWHM_ini", self.opt_fwhm_ini, "fwhm"),
+                    ("R_ini", self.opt_r_ini, "r")]
+        fin_rows = [("σ_fin", self.opt_sigma_fin, "sigma"),
+                    ("FWHM_fin", self.opt_fwhm_fin, "fwhm"),
+                    ("R_fin", self.opt_r_fin, "r")]
+        ini = [r for r in ini_rows if r[1].is_enabled()]
+        fin = [r for r in fin_rows if r[1].is_enabled()]
+
+        # Resolution correction is enabled, so one "ini" and one "fin" value
+        # must be provided — otherwise there is nothing to convolve.
+        if not ini:
             return (
                 "Enable Resolution Correction is checked, but no initial resolution "
-                "was set: enable at least one of σ_ini, FWHM_ini or R_ini with a value > 0."
+                "was set: enable one of σ_ini, FWHM_ini or R_ini."
             )
-        if not (self.opt_fwhm_fin.is_enabled() or self.opt_sigma_fin.is_enabled()
-                or self.opt_r_fin.is_enabled()):
+        if not fin:
             return (
                 "Enable Resolution Correction is checked, but no target resolution "
-                "was set: enable at least one of σ_fin, FWHM_fin or R_fin with a value > 0."
+                "was set: enable one of σ_fin, FWHM_fin or R_fin."
             )
+        if len(ini) > 1:
+            return "Enable only one initial resolution (σ_ini, FWHM_ini or R_ini)."
+        if len(fin) > 1:
+            return "Enable only one target resolution (σ_fin, FWHM_fin or R_fin)."
 
-        # Get initial equivalent FWHM (A)
-        fwhm_ini = None
-        desc_ini = None
-        if self.opt_fwhm_ini.is_enabled():
-            val = self.opt_fwhm_ini.value()
-            if val <= 0:
-                return "FWHM_ini must be strictly positive (> 0)."
-            fwhm_ini = val
-            desc_ini = f"FWHM_ini = {val:.2f} Å"
-        elif self.opt_sigma_ini.is_enabled():
-            val = self.opt_sigma_ini.value()
-            if val <= 0:
-                return "σ_ini must be strictly positive (> 0)."
-            fwhm_ini = (val * 2.355 / c_kms) * ref_wave
-            desc_ini = f"σ_ini = {val:.1f} km/s (≈ {fwhm_ini:.2f} Å at 5000 Å)"
-        elif self.opt_r_ini.is_enabled():
-            val = self.opt_r_ini.value()
-            if val <= 0:
-                return "R_ini must be strictly positive (> 0)."
-            fwhm_ini = ref_wave / val
-            desc_ini = f"R_ini = {val:.0f} (≈ {fwhm_ini:.2f} Å at 5000 Å)"
+        for label, row, _ in ini + fin:
+            if row.is_file():
+                path = row.file_path()
+                if not path:
+                    return f"{label} is set to File mode: choose a file."
+                if not os.path.isfile(path):
+                    return f"{label} file not found: {path}"
+            elif row.value() <= 0:
+                return f"{label} must be strictly positive (> 0)."
 
-        # Get final equivalent FWHM (A)
-        fwhm_fin = None
-        desc_fin = None
-        if self.opt_fwhm_fin.is_enabled():
-            val = self.opt_fwhm_fin.value()
-            if val <= 0:
-                return "FWHM_fin must be strictly positive (> 0)."
-            fwhm_fin = val
-            desc_fin = f"FWHM_fin = {val:.2f} Å"
-        elif self.opt_sigma_fin.is_enabled():
-            val = self.opt_sigma_fin.value()
-            if val <= 0:
-                return "σ_fin must be strictly positive (> 0)."
-            fwhm_fin = (val * 2.355 / c_kms) * ref_wave
-            desc_fin = f"σ_fin = {val:.1f} km/s (≈ {fwhm_fin:.2f} Å at 5000 Å)"
-        elif self.opt_r_fin.is_enabled():
-            val = self.opt_r_fin.value()
-            if val <= 0:
-                return "R_fin must be strictly positive (> 0)."
-            fwhm_fin = ref_wave / val
-            desc_fin = f"R_fin = {val:.0f} (≈ {fwhm_fin:.2f} Å at 5000 Å)"
+        (label_ini, row_ini, kind_ini), (label_fin, row_fin, kind_fin) = ini[0], fin[0]
+        # Wavelength-dependent or per-spectrum values are checked by saira()
+        # for every spectrum, at every wavelength.
+        if row_ini.is_file() or row_fin.is_file():
+            return None
 
-        if fwhm_ini is not None and fwhm_fin is not None:
-            if fwhm_fin < fwhm_ini:
-                return (
-                    f"Invalid resolution configuration:\n\n"
-                    f"Target resolution ({desc_fin}) is HIGHER than initial resolution ({desc_ini}).\n\n"
-                    f"Spectral convolution can only degrade resolution to a broader value:\n"
-                    f"  • σ_fin must be ≥ σ_ini\n"
-                    f"  • FWHM_fin must be ≥ FWHM_ini\n"
-                    f"  • R_fin must be ≤ R_ini"
-                )
+        def to_fwhm(kind, val):
+            if kind == "fwhm":
+                return val
+            if kind == "sigma":
+                return (val * 2.355 / c_kms) * ref_wave
+            return ref_wave / val
+
+        def describe(label, kind, val, fwhm):
+            if kind == "fwhm":
+                return f"{label} = {val:.2f} Å"
+            unit = " km/s" if kind == "sigma" else ""
+            return f"{label} = {val:.1f}{unit} (≈ {fwhm:.2f} Å at 5000 Å)"
+
+        val_ini, val_fin = row_ini.value(), row_fin.value()
+        fwhm_ini, fwhm_fin = to_fwhm(kind_ini, val_ini), to_fwhm(kind_fin, val_fin)
+        if fwhm_fin < fwhm_ini:
+            desc_ini = describe(label_ini, kind_ini, val_ini, fwhm_ini)
+            desc_fin = describe(label_fin, kind_fin, val_fin, fwhm_fin)
+            return (
+                f"Invalid resolution configuration:\n\n"
+                f"Target resolution ({desc_fin}) is HIGHER than initial resolution ({desc_ini}).\n\n"
+                f"Spectral convolution can only degrade resolution to a broader value:\n"
+                f"  • σ_fin must be ≥ σ_ini\n"
+                f"  • FWHM_fin must be ≥ FWHM_ini\n"
+                f"  • R_fin must be ≤ R_ini"
+            )
 
         return None
 
@@ -885,6 +913,14 @@ class MainWindow(QMainWindow):
         if errors:
             QMessageBox.warning(self, "Missing Input", "\n".join(errors))
             return
+
+        # Validate the redshift file, if one was chosen
+        if self.chk_enable_redshift.isChecked() and self.opt_z.is_enabled() and self.opt_z.is_file():
+            z_path = self.opt_z.file_path()
+            if not z_path or not os.path.isfile(z_path):
+                QMessageBox.critical(self, "Invalid Redshift File",
+                                     f"Redshift is set to File mode, but the file was not found: {z_path or '(none)'}")
+                return
 
         # Validate resolution parameters
         if self.chk_enable_resolution.isChecked():
@@ -1086,11 +1122,13 @@ class MainWindow(QMainWindow):
         cfg["enable_resolution"] = self.chk_enable_resolution.isChecked()
         for name in ("sigma_ini", "sigma_fin", "fwhm_ini", "fwhm_fin", "r_ini", "r_fin"):
             w = getattr(self, f"opt_{name}")
-            cfg[name] = {"enabled": w.is_enabled(), "value": w.spinbox.value()}
+            cfg[name] = {"enabled": w.is_enabled(), "value": w.spinbox.value(),
+                         "mode": w.combo_mode.currentText(), "file": w.file_path()}
 
         # Options
         cfg["enable_redshift"] = self.chk_enable_redshift.isChecked()
-        cfg["z"] = {"enabled": self.opt_z.is_enabled(), "value": self.opt_z.spinbox.value()}
+        cfg["z"] = {"enabled": self.opt_z.is_enabled(), "value": self.opt_z.spinbox.value(),
+                    "mode": self.opt_z.combo_mode.currentText(), "file": self.opt_z.file_path()}
 
         if self.radio_err_montecarlo.isChecked():
             cfg["error_method"] = "montecarlo"
@@ -1145,12 +1183,12 @@ class MainWindow(QMainWindow):
         for name in ("sigma_ini", "sigma_fin", "fwhm_ini", "fwhm_fin", "r_ini", "r_fin"):
             w = getattr(self, f"opt_{name}")
             d = cfg.get(name, {})
-            w.set_state(d.get("enabled", False), d.get("value"))
+            w.set_state(d.get("enabled", False), d.get("value"), d.get("mode"), d.get("file"))
 
         # Options
         self.chk_enable_redshift.setChecked(cfg.get("enable_redshift", False))
         d = cfg.get("z", {})
-        self.opt_z.set_state(d.get("enabled", False), d.get("value"))
+        self.opt_z.set_state(d.get("enabled", False), d.get("value"), d.get("mode"), d.get("file"))
 
         if "error_method" in cfg:
             method = cfg.get("error_method", "none")
