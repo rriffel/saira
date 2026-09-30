@@ -37,14 +37,15 @@ from .plot_dialog import PlotDialog
 RES_INI_FILE_TOOLTIP = (
     "File mode accepts either:\n"
     "  • a wavelength-dependent curve: two columns, wavelength (Å) and value,\n"
-    "    interpolated onto each spectrum (e.g. suport_files/e-miles_spectral_resolution.dat\n"
-    "    for FWHM_ini);\n"
+    "    interpolated onto each spectrum (e.g. suport_files/e-miles_spectral_resolution_fwhm.dat\n"
+    "    for FWHM or e-miles_spectral_resolution_sigma.dat for σ);\n"
     "  • one value per spectrum: columns 'file' and 'sigma' / 'FWHM' / 'R'\n"
     "    (e.g. examples/sdss_table_example.dat for σ_ini)."
 )
 RES_FIN_FILE_TOOLTIP = (
     "File mode accepts a wavelength-dependent curve: two columns,\n"
-    "wavelength (Å) and value, interpolated onto each spectrum."
+    "wavelength (Å) and value, interpolated onto each spectrum\n"
+    "(e.g. suport_files/e-miles_spectral_resolution_fwhm.dat or _sigma.dat)."
 )
 Z_FILE_TOOLTIP = (
     "File mode accepts one redshift per spectrum: columns 'file' and 'z'\n"
@@ -204,7 +205,7 @@ class MainWindow(QMainWindow):
         title = QLabel("SAIRA")
         title.setProperty("role", "appTitle")
         title.setStyleSheet("font-size: 20px; font-weight: 800; margin-bottom: 2px;")
-        sub = QLabel("Continuum & EW Measurement")
+        sub = QLabel("Self-consistent Algorithm for spectral Indices measuRements and Analysis")
         sub.setProperty("role", "mutedLabel")
         sub.setStyleSheet("font-size: 11px; margin-bottom: 4px;")
         sub.setWordWrap(True)
@@ -233,7 +234,7 @@ class MainWindow(QMainWindow):
             ("4. Plots & Output", 3),
         ]
         for text, idx in sections:
-            btn = QPushButton(text)
+            btn = QPushButton(text.replace("&", "&&"))  # a single & would become a keyboard mnemonic
             btn.setObjectName("navBtn")
             btn.setCursor(Qt.PointingHandCursor)
             btn.clicked.connect(lambda _, i=idx: self._scroll_to_section(i))
@@ -699,7 +700,7 @@ class MainWindow(QMainWindow):
     # -----------------------------------------------------------------
 
     def _create_panel_plots(self):
-        self.grp_plots = QGroupBox("Plots & Output")
+        self.grp_plots = QGroupBox("Plots && Output")
         lay = QVBoxLayout(self.grp_plots)
         lay.setSpacing(8)
 
