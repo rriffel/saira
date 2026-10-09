@@ -116,6 +116,26 @@ def _load_idx_definitions(index_defs):
     return read_idx_defs(index_defs)
 
 
+def read_input_table(filename):
+    """
+    Read the table listing the spectra: comma- (CSV) or tab/space-separated, with
+    a header containing at least a 'file' column. A 'redshift' column is accepted
+    as an alias of 'z'.
+    """
+    # The separator is taken from the header line: comma, tab or blanks
+    with open(filename) as f:
+        header = next((line for line in f if line.strip()), '')
+    if ',' in header:
+        sep = ','
+    elif '\t' in header or len(header.split()) < 2:
+        sep = '\t'
+    else:
+        sep = r'\s+'
+    table = pd.read_csv(filename, sep=sep, engine='python', skipinitialspace=True)
+    table.columns = [str(col).strip() for col in table.columns]
+    return table
+
+
 def list_spectrum_files(filename=None, path_to_files='./', file_extension=None):
     """
     Resolve the list of spectrum file names for a run, using the same logic
@@ -123,7 +143,7 @@ def list_spectrum_files(filename=None, path_to_files='./', file_extension=None):
     directory discovery by extension/pattern.
     """
     if filename is not None and os.path.isfile(filename):
-        original_input = pd.read_table(filename)
+        original_input = read_input_table(filename)
         return list(original_input['file'])
 
     ext = file_extension or '.txt'
@@ -209,7 +229,11 @@ def saira(filename = None,
           compute_idx = None,
           print_log = None,
           AllIndicesPlot = None,
-          allindices_plot_path = './allIndicesPlots/'
+          allindices_plot_path = './allIndicesPlots/',
+          use_flags = True,
+          mask_regions = None,
+          bpr_thres = 1.0,
+          error_method = 'vollmann'
           ):
 
     '''
@@ -228,7 +252,20 @@ def saira(filename = None,
                     even if a 'sigma', 'FWHM' or 'R' column is present in the input table.
      do_redshift: master flag. If False, the redshift correction is skipped entirely,
                   even if a 'z' column is present in the input table.
+     error_method: analytic uncertainties (when simulate is None): 'vollmann' (default),
+                   Vollmann & Eversberg (2006) with the S/N of the mean flux, or 'propagation',
+                   first-order propagation of the pixel uncertainties through the measurement.
+     use_flags: if True (default), a fourth column in the spectrum files is read as a
+                pixel mask (non-zero = bad pixel).
+     mask_regions: list of (lambda_min, lambda_max) intervals (rest frame) to be masked
+                   in all spectra, e.g. emission lines or sky residuals.
+     bpr_thres: bad pixel ratio within the bandpasses of an index above which the index
+                is not measured (NaN), as in pyLick. Bad pixels (flags, mask_regions,
+                non-finite fluxes or non-positive errors) are linearly interpolated.
     '''
+    if error_method not in ('vollmann', 'propagation'):
+        raise ValueError(f"error_method must be 'vollmann' or 'propagation' (got '{error_method}').")
+    error_option = error         # 'error' parameter (analytic errors without an error spectrum)
     if not do_resolution:
         sigma_ini = sigma_fin = FWHM_ini = FWHM_fin = R_ini = R_fin = None
     if not do_redshift:
@@ -246,7 +283,7 @@ def saira(filename = None,
 
     # Determine input spectrum files: from table or directory discovery
     if filename is not None and os.path.isfile(filename):
-        original_input = pd.read_table(filename)
+        original_input = read_input_table(filename)
     else:
         ext = file_extension or '.txt'
         matched_files = list_spectrum_files(filename, path_to_files, file_extension)
@@ -260,6 +297,8 @@ def saira(filename = None,
         original_input = pd.DataFrame({'file': matched_files})
 
     file_table =  original_input.copy()
+    if 'redshift' in file_table.columns and 'z' not in file_table.columns:
+        file_table = file_table.rename(columns={'redshift': 'z'})
     # check if in the table there is either FWHM (A), sigma (km/s) and R (lambda/d_lambda).
     # Otherwise, the initial resolution and the redshift can be given as a single value,
     # one value per spectrum (list or file with file/value columns) or, for the
@@ -310,6 +349,11 @@ def saira(filename = None,
             )
         print(f'  z={z}')
 
+    if mask_regions is not None:
+        print(f'Masked regions (rest frame): {mask_regions}')
+    print(f'Bad pixel ratio threshold: {bpr_thres}')
+    if simulate is None:
+        print(f'Analytic error method: {error_method}')
     print(f'Output file: {output_file} (CSV)')
     if print_log is not None:
         print(f'Log file: {print_log}')
@@ -337,13 +381,21 @@ def saira(filename = None,
     for file in file_table.index:
         print('----------------------------')
         
-        #open the files either if they have an error spectrum or not
+        #open the files either if they have an error spectrum (and pixel flags) or not
+        flags = None
+        error = error_option     # the error spectrum of the previous file must not be reused
         try:
-            wave, flux, error = np.genfromtxt(os.path.join(path_to_files,file), usecols=(0,1,2), unpack=True)
-            print('Doing file '+file+' with error')
+            if not use_flags:
+                raise ValueError
+            wave, flux, error, flags = np.genfromtxt(os.path.join(path_to_files,file), usecols=(0,1,2,3), unpack=True)
+            print('Doing file '+file+' with error and flags')
         except ValueError:
-            wave, flux = np.genfromtxt(os.path.join(path_to_files,file), usecols=(0,1), unpack=True)
-            print('Doing file '+file)
+            try:
+                wave, flux, error = np.genfromtxt(os.path.join(path_to_files,file), usecols=(0,1,2), unpack=True)
+                print('Doing file '+file+' with error')
+            except ValueError:
+                wave, flux = np.genfromtxt(os.path.join(path_to_files,file), usecols=(0,1), unpack=True)
+                print('Doing file '+file)
         
         path=None #path that lead to the folder for the figures
         if path_singleind_plots is not None:
@@ -371,7 +423,11 @@ def saira(filename = None,
                                             R_ini = file_table.loc[file, 'R'],
                                             z = file_table.loc[file, 'z'], path=path,
                                             AllIndicesPlot=pltallindices,
-                                            negative_Ew_to_zero=negative_Ew_to_zero
+                                            negative_Ew_to_zero=negative_Ew_to_zero,
+                                            mask=None if flags is None else flags != 0,
+                                            mask_regions=mask_regions,
+                                            bpr_thres=bpr_thres,
+                                            error_method=error_method
                                             )
        
         data_table.loc[file] = pd.Series(measurements, index=head_measurements)

@@ -90,23 +90,33 @@ saira.gui()
 
 A quick tour of what's in there:
 
-**Step 1 – Input Files.** Point it at a table listing your spectra (with optional per-spectrum
-`sigma`/`FWHM`/`R`/`z` columns), or just give it a directory and a file extension/pattern and let it
-find everything itself.
+**Step 1 – Input Files (and redshift).** Point it at a table listing your spectra (with optional
+per-spectrum `sigma`/`FWHM`/`R` columns), or just give it a directory and a file extension/pattern and
+let it find everything itself. The redshift correction lives here, at the top, because how `z` is
+given depends on that choice. It's off by default; once you tick **Enable Redshift Correction**:
 
-**Step 2 – Redshift & Resolution.** Redshift correction is applied first if you turn it on, then
-resolution changes (convolving to a common $\sigma$, FWHM, or $R$) if you turn *that* on too. Both are
-off by default and need their own checkbox — nothing happens automatically just because your table
-happens to have a `z` or `sigma` column. There's also a sanity check built in: it won't let you
-convolve toward a *sharper* resolution than you started with, and it'll tell you if you've turned
-resolution changes on without giving it both a starting point and a target. Every field has a
-**Value / File** selector: pick "File" to give a wavelength-dependent resolution curve, or one `z` /
-initial resolution per spectrum (see [below](#arrays-files-and-per-spectrum-values) for the formats) —
-handy in directory mode, where there's no input table to carry those columns.
+- in **Table / File List** mode, each spectrum is corrected with its own redshift, read from the table,
+  which then has to be a CSV file whose header contains `file,redshift` (see
+  `examples/sdss_table_example.csv`). Run refuses anything else — a missing column, a non-CSV file or a
+  spectrum without a valid redshift;
+- in **Auto-discover** mode there's no table to hold one `z` per spectrum, so you type a single `z` and
+  a warning reminds you that it will be applied to *every* spectrum found in the directory.
 
-**Step 3 – Other Settings.** Pick how errors get estimated — the analytic equation from
-[Vollmann & Eversberg (2006)](https://doi.org/10.1002/asna.2006), Monte Carlo simulation, or don't
-bother at all — plus Å-to-magnitude conversion, zeroing out negative EWs, and composite index
+**Step 2 – Resolution.** Resolution changes (convolving to a common $\sigma$, FWHM, or $R$) are applied
+after the redshift correction, if you turn them on. They're off by default and need their own checkbox
+— nothing happens automatically just because your table happens to have a `sigma` column. There's
+also a sanity check built in: it won't let you convolve toward a *sharper* resolution than you started
+with, and it'll tell you if you've turned resolution changes on without giving it both a starting
+point (from the form or from a `sigma`/`FWHM`/`R` column of the table) and a target. Every field has a
+**Value / File** selector: pick "File" to give a wavelength-dependent resolution curve, or one initial
+resolution per spectrum (see [below](#arrays-files-and-per-spectrum-values) for the formats) — handy in
+directory mode, where there's no input table to carry those columns.
+
+**Step 3 – Other Settings.** Set how bad pixels are handled — use a 4th column of the spectra as
+pixel flags, mask wavelength regions (rest frame) and choose the maximum bad pixel ratio of an index
+(see [Masking bad pixels](#masking-bad-pixels)). Pick how errors get estimated — analytic, either from
+[Vollmann & Eversberg (2006)](https://doi.org/10.1002/asna.2006) or by first-order propagation of the
+error spectrum, Monte Carlo simulation, or don't bother at all — plus Å-to-magnitude conversion, zeroing out negative EWs, and composite index
 formulas. There's also a "Select Indices…" dialog here: it lists every index in your `.ind` file with
 a checkbox, and unchecks (with a warning if you try to override it) any whose line limits fall
 outside what your spectra actually cover. You don't have to use it, either — clicking Run does the
@@ -122,6 +132,14 @@ second results file and overplot it against the first, handy for comparing runs 
 models. The Run Log at the bottom shows everything as it happens — which corrections were applied and
 with what values, where every file ended up — and the whole configuration can be saved/loaded as a
 `.json` file so you're not re-clicking through the same setup every time.
+
+The same configuration can also be exported as a plain Python script — **Export Script (.py)** writes a
+`run_saira.py` that calls `saira()` with exactly the arguments the GUI would use (including a custom
+"Select Indices…" choice), so the run can be reproduced on a machine with no display. **Load Script
+(.py)** does the reverse: it fills the GUI from such a script, or from one you wrote by hand. It runs the
+script's own code with a stand-in `saira()` that only records its arguments (nothing is measured), so
+only load scripts you trust; anything the GUI can't represent — e.g. a resolution given as an in-memory
+array — is listed in a warning instead of being silently dropped.
 
 ---
 
@@ -301,7 +319,8 @@ tail -f saira.log
 | `do_redshift` | Off by default. Has to be `True` for `z` to apply, table column included. |
 | `z` | Redshift to correct for. Only matters with `do_redshift=True`. |
 | `simulate` | Number of Monte Carlo iterations, if that's how you want errors estimated. |
-| `error` | Use the equation-based (Vollmann & Eversberg) error estimate instead. |
+| `error` | Analytic errors also for spectra without an error spectrum (noise estimated from the continuum bands). |
+| `error_method` | Analytic errors: `'vollmann'` (default, Vollmann & Eversberg 2006) or `'propagation'` (first-order error propagation). |
 | `negative_Ew_to_zero` | Clip negative EW measurements to zero. |
 | `A_to_mag` | Index names to convert from Å to magnitudes, e.g. `['Mg1', 'Mg2']`. |
 | `compute_idx` | Text file of composite index expressions (one per line, e.g. something like `MgFe'`). |
@@ -402,14 +421,51 @@ for the scripted version, or the GUI's "Select Indices…" dialog for the point-
 
 ---
 
+## Masking bad pixels
+
+Bad pixels are handled as in [pyLick](https://pylick.readthedocs.io) (Borghi et al. 2022): they are
+replaced by a linear interpolation of the good pixels (the variance is interpolated for the error
+spectrum), and an index is returned as `NaN` when the fraction of bad pixels within its bandpasses
+(the *bad pixel ratio*) exceeds `bpr_thres`. An index whose central band has no good pixel at all is
+never measured. A pixel is flagged as bad when:
+
+- the spectrum file has a **fourth column** and it is non-zero there (`use_flags=True`, the default);
+- it falls inside one of the `mask_regions`, a list of `(lambda_min, lambda_max)` intervals in the
+  **rest frame**, applied to every spectrum (e.g. emission lines or sky residuals);
+- its flux is not finite, or its error is not finite or not positive (unless the whole error
+  column is zero or negative, i.e. there is no real error spectrum).
+
+```python
+result = saira(filename='spectra.csv', path_to_files='./spectra/', IndexDefs='less_defs.ind',
+               do_redshift=True,
+               mask_regions=[(4855, 4870), (5570, 5585)],   # e.g. Hbeta emission and a sky line
+               bpr_thres=0.3)                               # drop indices with >30% bad pixels
+```
+
+At the function level, `eqw()` accepts the same `mask` (boolean array, `True` = bad), `mask_regions`
+and `bpr_thres` arguments, and `bad_pixels()` returns the combined mask of a spectrum.
+
 ## Errors
 
-Two ways to get them:
+Three ways to get them:
 
-1. **Equation** (the default, when there's an error spectrum to work with) — estimated from the S/N
-   in the line and continuum, using the formalism in [Vollmann & Eversberg (2006)](https://doi.org/10.1002/asna.2006),
-   Astronomische Nachrichten, DOI 10.1002/asna.2006 ([arXiv version](https://arxiv.org/pdf/astro-ph/0606341.pdf)).
-2. **Monte Carlo** (`simulate=N`) — generates `N` synthetic spectra from the flux and error arrays,
+1. **Analytic, Vollmann & Eversberg** (`error_method='vollmann'`, the default) — from the S/N of the
+   mean flux in the central band and equation (7) of
+   [Vollmann & Eversberg (2006)](https://doi.org/10.1002/asna.2006), Astronomische Nachrichten
+   ([arXiv version](https://arxiv.org/pdf/astro-ph/0606341.pdf)). Fast, but it ignores the noise of
+   the continuum bands and treats the depth of the feature only approximately (on the SDSS examples:
+   within ~2% of Monte Carlo on average, with a ~±15% scatter).
+2. **Analytic, error propagation** (`error_method='propagation'`) — the error of every pixel is
+   propagated, to first order, through exactly the same operations used to measure the index
+   (interpolated band edges, mean fluxes of the continuum bands, least-squares pseudo-continuum and
+   trapezoidal integration), assuming uncorrelated pixel errors: σ² = Σᵢ (∂I/∂Fᵢ)² σᵢ². It includes
+   the noise of the continuum bands and the depth of the feature, and agrees with the Monte Carlo
+   estimate to within a few per cent (`index_error()` in `SairaFunctions.py`).
+
+Without an error spectrum (`error=True`), both analytic methods estimate the noise per pixel from the
+RMS of a linear fit to the continuum band(s), which is only approximate.
+
+3. **Monte Carlo** (`simulate=N`) — generates `N` synthetic spectra from the flux and error arrays,
    remeasures everything on each one, and takes the standard deviation as the uncertainty.
 
 ---
