@@ -110,6 +110,172 @@ def computeEW(cont_l,cont_f,line_l,line_f):
         
     return EW
 
+def _interp_row(l_obs, x):
+    '''Weights of the pixels of l_obs in the linear interpolation at x (None if x is outside).'''
+    if x < l_obs[0] or x > l_obs[-1]:
+        return None
+    row = np.zeros(len(l_obs))
+    i = min(np.searchsorted(l_obs, x, side='right') - 1, len(l_obs) - 2)
+    t = (x - l_obs[i]) / (l_obs[i+1] - l_obs[i])
+    row[i] += 1 - t
+    row[i+1] += t
+    return row
+
+
+def _sample_operator(l_obs, lo, hi, closed):
+    '''
+    Wavelengths and (n_points x n_pixels) linear operator giving the flux at the
+    points GetConts uses within [lo, hi]: the interpolated edges and the pixels in
+    between (pixels on the edges are included only if closed is True).
+    '''
+    inside = (l_obs >= lo) & (l_obs <= hi) if closed else (l_obs > lo) & (l_obs < hi)
+    rows, waves = [], []
+    first = _interp_row(l_obs, lo)
+    if first is not None:
+        rows.append(first)
+        waves.append(lo)
+    for i in np.where(inside)[0]:
+        row = np.zeros(len(l_obs))
+        row[i] = 1.
+        rows.append(row)
+        waves.append(l_obs[i])
+    last = _interp_row(l_obs, hi)
+    if last is not None:
+        rows.append(last)
+        waves.append(hi)
+    return np.array(waves), np.array(rows)
+
+
+def _trapezoid_weights(x):
+    '''Weights w such that sum(w*y) is the trapezoidal integral of y(x).'''
+    w = np.zeros(len(x))
+    dx = np.diff(x)
+    w[:-1] += dx / 2
+    w[1:] += dx / 2
+    return w
+
+
+def index_error(l_obs, f_obs, sigma, linelims, contBandPass):
+    '''
+    Uncertainty of an index (EW or break) obtained by propagating, to first order,
+    the uncertainties of the pixels through the exact same operations performed by
+    GetConts and computeEW/computeBREAK: interpolated band edges, mean fluxes of the
+    continuum bands (trapezoidal rule), linear least-squares pseudo-continuum and
+    trapezoidal integration of 1 - F/Fc over the central band. Pixel uncertainties
+    are assumed to be uncorrelated:  sigma_I^2 = sum_i (dI/dF_i)^2 sigma_i^2.
+
+    Parameters:
+    l_obs, f_obs: wavelength and flux arrays of the spectrum
+    sigma: uncertainty of each pixel (array) or the same value for all pixels
+    linelims: limits of the central band (equal limits for a break)
+    contBandPass: limits of the continuum bands, pair-wise
+    '''
+    l_obs = np.asarray(l_obs, dtype=float)
+    f_obs = np.asarray(f_obs, dtype=float)
+    sigma = np.broadcast_to(np.asarray(sigma, dtype=float), l_obs.shape)
+
+    # restrict everything to the pixels that can enter the index
+    lo = min(np.min(contBandPass), linelims[0])
+    hi = max(np.max(contBandPass), linelims[1])
+    i0 = max(np.searchsorted(l_obs, lo) - 1, 0)
+    i1 = min(np.searchsorted(l_obs, hi) + 1, len(l_obs))
+    l_obs, f_obs, sigma = l_obs[i0:i1], f_obs[i0:i1], sigma[i0:i1]
+
+    # mean flux of each continuum band: C = U F, at the band mid-points lam_c
+    U, lam_c = [], []
+    for k in range(len(contBandPass) // 2):
+        x, S = _sample_operator(l_obs, contBandPass[2*k], contBandPass[2*k+1], closed=False)
+        U.append(_trapezoid_weights(x) @ S / (x[-1] - x[0]))
+        lam_c.append((x[-1] + x[0]) / 2.)
+    U, lam_c = np.array(U), np.array(lam_c)
+    C = U @ f_obs
+
+    if linelims[0] == linelims[1]:
+        # break: D = C_red / C_blue
+        D = C[1] / C[0]
+        grad = U[1] / C[0] - D * U[0] / C[0]
+        return float(np.sqrt(np.sum((grad * sigma)**2)))
+
+    # central band: line flux F_j = L F at the wavelengths lam_l
+    lam_l, L = _sample_operator(l_obs, linelims[0], linelims[1], closed=True)
+    # linear least-squares pseudo-continuum: Fc_j = A C = (A U) F
+    X = np.column_stack([lam_c, np.ones_like(lam_c)])
+    A = np.column_stack([lam_l, np.ones_like(lam_l)]) @ np.linalg.pinv(X)
+    AU = A @ U
+    F_line, F_cont = L @ f_obs, AU @ f_obs
+    t = _trapezoid_weights(lam_l)
+    # EW = sum_j t_j (1 - F_j/Fc_j)  ->  dEW/dF_i
+    grad = -(t / F_cont) @ L + (t * F_line / F_cont**2) @ AU
+    return float(np.sqrt(np.sum((grad * sigma)**2)))
+
+
+def bad_pixels(wave, flux, error=None, mask=None, mask_regions=None):
+    '''
+    Boolean array, True for the pixels that must not be used in the measurements.
+
+    Parameters:
+    wave, flux: wavelength and flux arrays of the spectrum
+    error: error spectrum (optional). Pixels with non-finite or non-positive errors are
+        flagged, unless all the errors are non-positive (i.e. no real error spectrum).
+    mask: array with the same size as wave, True (or non-zero) for bad pixels (optional)
+    mask_regions: list of (lambda_min, lambda_max) intervals to be masked, in the same
+        frame as wave, e.g. emission lines or sky residuals (optional)
+    '''
+    wave = np.asarray(wave, dtype=float)
+    bad = ~np.isfinite(np.asarray(flux, dtype=float))
+    if isinstance(error, np.ndarray):
+        err = np.asarray(error, dtype=float)
+        bad |= ~np.isfinite(err)
+        if (err > 0).any():
+            bad |= ~(err > 0)
+    if mask is not None:
+        mask = np.asarray(mask)
+        if mask.shape != wave.shape:
+            raise ValueError(f"mask has {mask.size} values but the spectrum has {wave.size} pixels")
+        bad |= mask.astype(bool)
+    if mask_regions is not None:
+        for lo, hi in np.atleast_2d(np.asarray(mask_regions, dtype=float)):
+            bad |= (wave >= min(lo, hi)) & (wave <= max(lo, hi))
+    return bad
+
+
+def _bad_pixel_ratio(wave, bad, line):
+    '''
+    Fraction of bad pixels within the bandpasses of an index (central and continuum
+    bands), and fraction of bad pixels within the central band alone.
+    '''
+    limits = np.append(line['defs'], line['conts']).reshape(-1, 2)
+    inside = np.zeros_like(bad)
+    for lo, hi in limits:
+        inside |= (wave > lo) & (wave < hi)
+    central = (wave > line['defs'][0]) & (wave < line['defs'][1])
+    bpr = bad[inside].mean() if inside.any() else 0.
+    bpr_central = bad[central].mean() if central.any() else 0.
+    return bpr, bpr_central
+
+
+def _mean_flux_error(wave, error, lo, hi):
+    '''Uncertainty of the mean flux within [lo, hi], for uncorrelated pixel errors.'''
+    inside = (wave >= lo) & (wave <= hi)
+    return np.sqrt(np.sum(error[inside]**2)) / np.sum(inside)
+
+
+def vollmann_error(EW, dl, SN):
+    '''
+    EW uncertainty from Vollmann & Eversberg (2006), Astron. Nachr., DOI 10.1002/asna.2006
+    (https://arxiv.org/pdf/astro-ph/0606341.pdf); their equation (7) written as a function
+    of the EW, the width of the central band (dl) and the S/N of the mean flux only.
+    '''
+    return np.sqrt((2*dl-EW)*(dl-EW))/SN
+
+
+def _residual_rms(wave, flux, lo, hi):
+    '''Noise per pixel: RMS of the residuals of a straight line fitted to the pixels in [lo, hi].'''
+    (_, _, band_l, band_f) = GetConts(wave, flux, [lo, hi], [lo, hi])
+    (a, b) = np.polyfit(band_l, band_f, deg=1)
+    return np.std(band_f - (a*band_l + b))
+
+
 def _is_missing(value):
     '''True for None and for a scalar NaN (e.g. an empty cell of the input table).'''
     if value is None:
@@ -387,6 +553,10 @@ def eqw(wave,
         path=None,
         AllIndicesPlot=None,
         negative_Ew_to_zero=False,
+        mask=None,
+        mask_regions=None,
+        bpr_thres=1.0,
+        error_method='vollmann',
         ):
     
     # Function that gets the spectra, tweeks it in a way given by the user and calls the functions to make the calculation of the EW
@@ -400,6 +570,17 @@ def eqw(wave,
     # sigma_fin: velocity dispersion to be used in the convulution with a gaussina kernel
     # FWHM_model: initial velocity dispersion. can be both a number or an array.
     # do_figs: if you want the code to show you the calculations for each line.
+    # mask: array with the same size as wave, True (or non-zero) for bad pixels.
+    # mask_regions: list of (lambda_min, lambda_max) intervals to be masked, in the rest frame.
+    # error_method: analytic uncertainties (when simulate is None): 'vollmann' (default), from the
+    #   S/N of the mean flux and the formula of Vollmann & Eversberg (2006), or 'propagation', the
+    #   first-order propagation of the pixel uncertainties through the measurement (index_error).
+    # bpr_thres: bad pixel ratio (fraction of bad pixels within the bandpasses of an index)
+    #   above which the index is not measured (returned as NaN), as in pyLick (Borghi et al. 2022).
+    #   Indices with all the pixels of the central band bad are never measured.
+    # Bad pixels (mask, mask_regions, non-finite fluxes, and non-finite or non-positive
+    #   errors) are replaced by a linear interpolation of the good ones (the variance, in the
+    #   case of the error spectrum) before any other operation.
     #
     # 
     #
@@ -420,9 +601,27 @@ def eqw(wave,
         fig, axes = plt.subplots(num_rows, num_cols, figsize=(15, 5*num_rows)) 
 
 
+    if error_method not in ('vollmann', 'propagation'):
+        raise ValueError(f"error_method must be 'vollmann' or 'propagation' (got '{error_method}').")
+
     #redshift correction
     if not _is_missing(z):
         wave = wave/(1+z)
+
+    # bad pixels: replaced by a linear interpolation of the good ones
+    bad = bad_pixels(wave, flux, error, mask, mask_regions)
+    if bad.any():
+        good = ~bad
+        if good.sum() < 2:
+            raise ValueError("Fewer than two good pixels in the spectrum.")
+        flux = np.array(flux, dtype=float)
+        flux[bad] = np.interp(wave[bad], wave[good], flux[good])
+        if isinstance(error, np.ndarray):
+            error = np.array(error, dtype=float)
+            error[bad] = np.sqrt(np.interp(wave[bad], wave[good], error[good]**2))
+        print(f'{bad.sum()} bad pixels masked and interpolated')
+    else:
+        bad = None
 
     # converting sigma, R or FWHM (scalars, arrays or wavelength-dependent curves) to FWHM in A
     FWHM_ini = resolution_to_fwhm(wave, sigma=sigma_ini, R=R_ini, FWHM=FWHM_ini)
@@ -522,9 +721,14 @@ def eqw(wave,
                             (cont_l,cont_f,line_l,line_f)=GetConts(wave,sim_flux[i,:],line['defs'],line['conts'])
                             eEW.append(computeBREAK(red_l=cont_l[1],red_f=cont_f[1],blue_l=cont_l[0],blue_f=cont_f[0]))
                         eEW = np.std(eEW)
+                    elif error_method == 'propagation':
+                        # first-order propagation of the error spectrum (index_error)
+                        eEW = index_error(wave, flux, error, line['defs'], line['conts'])
                     else:
-                        (cont_l,err_cont,line_l,err_f)=GetConts(wave,error,line['defs'],line['conts'])
-                        eEW = EW * np.sqrt((err_f[0]/cont_f[0])**2+(err_f[1]/cont_f[1])**2) #this may need to change to account for the covariance
+                        # uncertainties of the mean fluxes in the blue and red bands
+                        err_blue = _mean_flux_error(wave, error, line['conts'][0], line['conts'][1])
+                        err_red = _mean_flux_error(wave, error, line['conts'][2], line['conts'][3])
+                        eEW = EW * np.sqrt((err_blue/cont_f[0])**2+(err_red/cont_f[1])**2)
                 else:
                     EW = computeEW(cont_l,cont_f,line_l,line_f) # No caso do simulate a EW deveria ser amedia e o erro o std....############NOTA#############
                     if simulate is not None:
@@ -533,17 +737,21 @@ def eqw(wave,
                             (cont_l,cont_f,line_l,line_f)=GetConts(wave,sim_flux[i,:],line['defs'],line['conts'])
                             eEW.append(computeEW(cont_l,cont_f,line_l,line_f))
                         eEW = np.std(eEW)
+                    elif error_method == 'propagation':
+                        # first-order propagation of the error spectrum (index_error)
+                        eEW = index_error(wave, flux, error, line['defs'], line['conts'])
                     else:
-                        (cont_l,err_cont,line_l,err_f)=GetConts(wave,error,line['defs'],line['conts']) # Parece nao estar funcionando ######################NOTA #########################
-                        S=line_f
-                        N=err_f
-                        SN=np.mean(np.divide(S,N))
+                        (cont_l,err_cont,line_l,err_f)=GetConts(wave,error,line['defs'],line['conts'])
+                        # S/N of the mean flux in the central bandpass (not the S/N per pixel):
+                        # mean flux / uncertainty of the mean, sqrt(sum(sigma_i^2))/N
+                        SN = np.mean(line_f) / (np.sqrt(np.sum(err_f**2)) / len(err_f))
                         dl = line_l[-1]-line_l[0]
-                        eEW = np.sqrt((2*dl-EW)*(dl-EW))/SN
-                        # error bar estimation based on Vollmann & Eversberg (2006),
-                        # Astron. Nachr., DOI 10.1002/asna.2006
-                        # https://arxiv.org/pdf/astro-ph/0606341.pdf
-                        # (changed their equation (7) to depend only on EQW, d_LAMBDA and the S/N)
+                        eEW = vollmann_error(EW, dl, SN)
+                if bad is not None:
+                    bpr, bpr_central = _bad_pixel_ratio(wave, bad, line)
+                    if bpr > bpr_thres or bpr_central >= 1:
+                        print(f"Index {line['name']} not measured: {100*bpr:.0f}% of bad pixels in its bandpasses")
+                        EW, eEW = np.nan, np.nan
                 if negative_Ew_to_zero:
                     if float(EW) < 0:
                         EW = 0.00
@@ -602,27 +810,34 @@ def eqw(wave,
                 if line['defs'][0] == line['defs'][1]:
                     EW = computeBREAK(red_l=cont_l[1],red_f=cont_f[1],blue_l=cont_l[0],blue_f=cont_f[0])
                     if error:
-                        (w_mean,s_blue,cont_wave,cont_flux) = GetConts(wave,flux,line['conts'][0:2],line['conts'][0:2])
-                        (a,b) = np.polyfit(cont_wave,cont_flux,deg=1)
-                        cont = lambda x : x*a+b
-                        err_blue = np.std(cont_flux-cont(cont_wave))
-                        (w_mean,s_red,cont_wave,cont_flux) = GetConts(wave,flux,line['conts'][2:4],line['conts'][2:4])
-                        (a,b) = np.polyfit(cont_wave,cont_flux,deg=1)
-                        cont = lambda x : x*a+b
-                        err_red = np.std(cont_flux-cont(cont_wave))
-                        eEW = EW*np.sqrt((err_blue/s_blue[0])**2+(err_red/s_red[0])**2)
+                        # noise per pixel estimated from each continuum band, then propagated
+                        rms_blue = _residual_rms(wave, flux, line['conts'][0], line['conts'][1])
+                        rms_red = _residual_rms(wave, flux, line['conts'][2], line['conts'][3])
+                        if error_method == 'propagation':
+                            noise = np.where(wave < (line['conts'][1] + line['conts'][2]) / 2, rms_blue, rms_red)
+                            eEW = index_error(wave, flux, noise, line['defs'], line['conts'])
+                        else:
+                            # uncertainties of the mean fluxes: RMS / sqrt(number of pixels in the band)
+                            n_blue = np.sum((wave > line['conts'][0]) & (wave < line['conts'][1])) + 2
+                            n_red = np.sum((wave > line['conts'][2]) & (wave < line['conts'][3])) + 2
+                            eEW = EW*np.sqrt((rms_blue/np.sqrt(n_blue)/cont_f[0])**2+(rms_red/np.sqrt(n_red)/cont_f[1])**2)
 
                 else:
                     EW = computeEW(cont_l,cont_f,line_l,line_f)
                     if error:
-                        (w_mean,s_mean,cont_wave,cont_flux) = GetConts(wave,flux,line['conts'][0:2],line['conts'][0:2])
-                        (a,b) = np.polyfit(cont_wave,cont_flux,deg=1)
-                        cont = lambda x : x*a+b
-                        S = s_mean[0]
-                        N = np.std(cont_flux-cont(cont_wave))
-                        SN = S/N
-                        dl = line['defs'][1] - line['defs'][0]
-                        eEW = np.sqrt((2*dl-EW)*(dl-EW))/SN
+                        # noise per pixel estimated from the blue continuum band, then propagated
+                        rms_blue = _residual_rms(wave, flux, line['conts'][0], line['conts'][1])
+                        if error_method == 'propagation':
+                            eEW = index_error(wave, flux, rms_blue, line['defs'], line['conts'])
+                        else:
+                            SN = cont_f[0] / (rms_blue / np.sqrt(len(line_l)))   # S/N of the mean flux in the line
+                            dl = line['defs'][1] - line['defs'][0]
+                            eEW = vollmann_error(EW, dl, SN)
+                if bad is not None:
+                    bpr, bpr_central = _bad_pixel_ratio(wave, bad, line)
+                    if bpr > bpr_thres or bpr_central >= 1:
+                        print(f"Index {line['name']} not measured: {100*bpr:.0f}% of bad pixels in its bandpasses")
+                        EW, eEW = np.nan, np.nan
                 if negative_Ew_to_zero:
                     if float(EW) < 0:
                         EW = 0.00

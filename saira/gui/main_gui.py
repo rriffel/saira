@@ -18,7 +18,7 @@ import pandas as pd
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QScrollArea, QGroupBox, QCheckBox, QRadioButton,
-    QButtonGroup, QSpinBox, QTableWidget, QTableWidgetItem, QSplitter, QProgressBar,
+    QButtonGroup, QSpinBox, QDoubleSpinBox, QTableWidget, QTableWidgetItem, QSplitter, QProgressBar,
     QFileDialog, QMessageBox, QSizePolicy, QComboBox, QSpacerItem
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
@@ -31,6 +31,7 @@ from .custom_widgets import (
 )
 from .index_selection_dialog import IndexSelectionDialog
 from .plot_dialog import PlotDialog
+from .script_io import generate_script, import_script, ScriptImportError
 
 
 # Tooltips describing the files accepted by the Value/File rows
@@ -47,15 +48,28 @@ RES_FIN_FILE_TOOLTIP = (
     "wavelength (Å) and value, interpolated onto each spectrum\n"
     "(e.g. suport_files/e-miles_spectral_resolution_fwhm.dat or _sigma.dat)."
 )
-Z_FILE_TOOLTIP = (
-    "File mode accepts one redshift per spectrum: columns 'file' and 'z'\n"
-    "(e.g. examples/sdss_table_example.dat)."
-)
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def parse_mask_regions(text):
+    """
+    Parse wavelength intervals such as "4855-4870, 5570-5585" (or "4855 4870; 5570 5585")
+    into a list of (lambda_min, lambda_max) tuples. Raises ValueError if malformed.
+    """
+    import re
+    numbers = [float(x) for x in re.findall(r"\d+(?:\.\d*)?|\.\d+", text or "")]
+    if not numbers or len(numbers) % 2:
+        raise ValueError(f"Mask regions must be pairs of wavelengths, e.g. 4855-4870, 5570-5585 (got '{text}').")
+    return [(min(a, b), max(a, b)) for a, b in zip(numbers[0::2], numbers[1::2])]
+
+
+def format_mask_regions(regions):
+    """Inverse of parse_mask_regions."""
+    return ", ".join(f"{lo:g}-{hi:g}" for lo, hi in regions)
+
 
 def get_logo_path():
     """Return the path to the SAIRA logo, or None if not found."""
@@ -229,7 +243,7 @@ class MainWindow(QMainWindow):
         self.nav_buttons = []
         sections = [
             ("1. Input Files", 0),
-            ("2. Redshift & Resolution", 1),
+            ("2. Resolution", 1),
             ("3. Other Settings", 2),
             ("4. Plots & Output", 3),
         ]
@@ -269,6 +283,20 @@ class MainWindow(QMainWindow):
         btn_save.setCursor(Qt.PointingHandCursor)
         btn_save.clicked.connect(self._on_save_config)
         layout.addWidget(btn_save)
+
+        btn_export_script = QPushButton("Export Script (.py)")
+        btn_export_script.setProperty("role", "secondaryBtn")
+        btn_export_script.setCursor(Qt.PointingHandCursor)
+        btn_export_script.setToolTip("Save the current configuration as a standalone Python script")
+        btn_export_script.clicked.connect(self._on_export_script)
+        layout.addWidget(btn_export_script)
+
+        btn_load_script = QPushButton("Load Script (.py)")
+        btn_load_script.setProperty("role", "secondaryBtn")
+        btn_load_script.setCursor(Qt.PointingHandCursor)
+        btn_load_script.setToolTip("Fill the GUI from a script that calls saira()")
+        btn_load_script.clicked.connect(self._on_load_script)
+        layout.addWidget(btn_load_script)
 
         layout.addSpacing(12)
 
@@ -324,6 +352,48 @@ class MainWindow(QMainWindow):
         self.grp_input = QGroupBox("Input Files")
         lay = QVBoxLayout(self.grp_input)
         lay.setSpacing(10)
+
+        # Redshift correction comes first: how z is given depends on the input mode
+        # (one z per spectrum from the table, or a single z for a whole directory).
+        self.chk_enable_redshift = QCheckBox("  Enable Redshift Correction")
+        self.chk_enable_redshift.setProperty("role", "masterToggle")
+        self.chk_enable_redshift.setChecked(False)
+        self.chk_enable_redshift.toggled.connect(self._update_redshift_widgets)
+        lay.addWidget(self.chk_enable_redshift)
+
+        self.lbl_z_table = QLabel(
+            "The redshift of each spectrum is read from the Spectrum List, which must be "
+            "a CSV file whose header contains the columns file,redshift."
+        )
+        self.lbl_z_table.setProperty("role", "accentLabel")
+        self.lbl_z_table.setStyleSheet("font-size: 12px;")
+        self.lbl_z_table.setWordWrap(True)
+        lay.addWidget(self.lbl_z_table)
+
+        self.z_row = QWidget()
+        z_lay = QHBoxLayout(self.z_row)
+        z_lay.setContentsMargins(0, 0, 0, 0)
+        z_lay.setSpacing(8)
+        z_label = QLabel("Redshift (z):")
+        z_label.setFixedWidth(140)
+        z_label.setStyleSheet("font-weight: 500;")
+        z_lay.addWidget(z_label)
+        self.spin_z = QDoubleSpinBox()
+        self.spin_z.setRange(0.0, 20.0)
+        self.spin_z.setDecimals(8)
+        self.spin_z.setSingleStep(0.001)
+        self.spin_z.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        z_lay.addWidget(self.spin_z, 1)
+        lay.addWidget(self.z_row)
+
+        self.lbl_z_warning = QLabel(
+            "⚠  The same redshift will be applied to ALL spectra found in the directory. "
+            "To correct each spectrum with its own z, use Table / File List mode."
+        )
+        self.lbl_z_warning.setProperty("role", "dangerLabel")
+        self.lbl_z_warning.setStyleSheet("font-size: 12px;")
+        self.lbl_z_warning.setWordWrap(True)
+        lay.addWidget(self.lbl_z_warning)
 
         # Mode Selection
         mode_row = QWidget()
@@ -429,6 +499,7 @@ class MainWindow(QMainWindow):
         self.pick_output.set_text("measurements.csv")
         lay.addWidget(self.pick_output)
 
+        self._update_redshift_widgets()
         self.panels_layout.addWidget(self.grp_input)
 
     def _on_input_mode_changed(self):
@@ -437,6 +508,48 @@ class MainWindow(QMainWindow):
         self.ext_row.setVisible(not is_table)
         if not is_table:
             self._update_discovered_count()
+        self._update_redshift_widgets()
+
+    def _update_redshift_widgets(self, *_):
+        """Show only the redshift options that apply to the current input mode."""
+        enabled = self.chk_enable_redshift.isChecked()
+        is_table = self.radio_table_mode.isChecked()
+        self.lbl_z_table.setVisible(enabled and is_table)
+        self.z_row.setVisible(enabled and not is_table)
+        self.lbl_z_warning.setVisible(enabled and not is_table)
+        if enabled and is_table:
+            self.pick_spectrum_list.line_edit.setPlaceholderText("CSV file with header: file,redshift")
+            self.pick_spectrum_list.file_filter = "CSV Files (*.csv);;All Files (*)"
+        else:
+            self.pick_spectrum_list.line_edit.setPlaceholderText("ASCII table with 'file' column")
+            self.pick_spectrum_list.file_filter = "Data Files (*.dat *.txt *.csv);;All Files (*)"
+
+    def _validate_redshift_table(self, filename):
+        """
+        With the redshift correction on in Table mode, the spectrum list must be a
+        CSV file with 'file' and 'redshift' columns and a valid z for every row.
+        Returns None if valid, or an error description string.
+        """
+        if not filename.lower().endswith(".csv"):
+            return (f"With the redshift correction enabled, the Spectrum List must be a CSV "
+                    f"file with the header file,redshift.\n\nSelected file: {filename}")
+        try:
+            table = pd.read_csv(filename, skipinitialspace=True)
+        except Exception as e:
+            return f"Could not read the Spectrum List as CSV: {e}"
+        table.columns = [str(c).strip() for c in table.columns]
+        missing = [c for c in ("file", "redshift") if c not in table.columns]
+        if missing:
+            return (f"The Spectrum List header must contain the columns file,redshift.\n\n"
+                    f"Missing: {', '.join(missing)}\nFound: {', '.join(table.columns)}")
+        z = pd.to_numeric(table["redshift"], errors="coerce")
+        bad = table.loc[z.isna(), "file"].astype(str).tolist()
+        if bad:
+            return (f"{len(bad)} spectra have no valid redshift in the Spectrum List:\n\n"
+                    + "\n".join(bad[:15]) + ("\n…" if len(bad) > 15 else ""))
+        if (z < 0).any():
+            return "The Spectrum List contains negative redshifts."
+        return None
 
     def _update_discovered_count(self):
         if not hasattr(self, 'radio_extension_mode') or not self.radio_extension_mode.isChecked():
@@ -548,31 +661,17 @@ class MainWindow(QMainWindow):
     # -----------------------------------------------------------------
 
     def _create_panel_resolution(self):
-        self.grp_resolution = QGroupBox("Redshift && Resolution")
+        self.grp_resolution = QGroupBox("Resolution")
         lay = QVBoxLayout(self.grp_resolution)
         lay.setSpacing(8)
 
-        # Redshift correction is applied first, before any resolution changes.
-        self.chk_enable_redshift = QCheckBox("  Enable Redshift Correction")
-        self.chk_enable_redshift.setProperty("role", "masterToggle")
-        self.chk_enable_redshift.setChecked(False)
-        self.chk_enable_redshift.toggled.connect(self._on_redshift_flag_toggled)
-        lay.addWidget(self.chk_enable_redshift)
-
-        self.opt_z = ToggleValueFileRow(
-            "Redshift (z)", suffix="", max_val=20.0, decimals=8, default_val=0.0,
-            file_tooltip=Z_FILE_TOOLTIP
-        )
-        self.opt_z.setEnabled(False)
-        lay.addWidget(self.opt_z)
-
         info = QLabel(
             "Resolution changes are optional and, when enabled, are applied after "
-            "the redshift correction above. Each value can be a single number or a "
+            "the redshift correction (Input Files). Each value can be a single number or a "
             "file (choose \"File\"): a wavelength-dependent curve (columns: "
-            "wavelength, value) or, for the initial resolution and z, one value per "
+            "wavelength, value) or, for the initial resolution, one value per "
             "spectrum (columns: file, value). Values may also come from the input "
-            "table (columns: sigma, FWHM, R, z), which take precedence. Enable only "
+            "table (columns: sigma, FWHM, R), which take precedence. Enable only "
             "one initial and one target resolution."
         )
         info.setProperty("role", "mutedLabel")
@@ -631,9 +730,6 @@ class MainWindow(QMainWindow):
 
         self.panels_layout.addWidget(self.grp_resolution)
 
-    def _on_redshift_flag_toggled(self, checked):
-        self.opt_z.setEnabled(checked)
-
     def _on_resolution_flag_toggled(self, checked):
         for row in self._resolution_rows:
             row.setEnabled(checked)
@@ -654,15 +750,24 @@ class MainWindow(QMainWindow):
         self.err_button_group = QButtonGroup(self)
         self.radio_err_none = QRadioButton("  Don't compute errors")
         self.radio_err_analytical = QRadioButton(
-            "  Equation (Vollmann and Eversberg, 2006, DOI 10.1002/asna.2006)"
+            "  Analytic: Vollmann and Eversberg (2006, DOI 10.1002/asna.2006)"
+        )
+        self.radio_err_propagation = QRadioButton(
+            "  Analytic: first-order propagation of the error spectrum"
+        )
+        self.radio_err_propagation.setToolTip(
+            "Propagates the uncertainty of every pixel through the same operations used to\n"
+            "measure the index (continuum bands, pseudo-continuum and integration)."
         )
         self.radio_err_montecarlo = QRadioButton("  Monte Carlo")
         self.radio_err_none.setChecked(True)
-        for rb in (self.radio_err_none, self.radio_err_analytical, self.radio_err_montecarlo):
+        for rb in (self.radio_err_none, self.radio_err_analytical,
+                   self.radio_err_propagation, self.radio_err_montecarlo):
             self.err_button_group.addButton(rb)
 
         lay.addWidget(self.radio_err_none)
         lay.addWidget(self.radio_err_analytical)
+        lay.addWidget(self.radio_err_propagation)
 
         mc_row = QWidget()
         mc_lay = QHBoxLayout(mc_row)
@@ -678,6 +783,47 @@ class MainWindow(QMainWindow):
         mc_lay.addWidget(self.spin_montecarlo_n, 1)
         lay.addWidget(mc_row)
         self.radio_err_montecarlo.toggled.connect(self.spin_montecarlo_n.setEnabled)
+
+        bad_label = QLabel("Bad Pixels:")
+        bad_label.setStyleSheet("font-weight: 500; margin-top: 6px;")
+        lay.addWidget(bad_label)
+
+        self.chk_use_flags = QCheckBox("  Use a 4th column of the spectra as pixel flags (non-zero = bad)")
+        self.chk_use_flags.setChecked(True)
+        lay.addWidget(self.chk_use_flags)
+
+        self.opt_mask_regions = ToggleTextRow(
+            "Mask Regions (Å)", placeholder="Rest-frame intervals, e.g. 4855-4870, 5570-5585"
+        )
+        self.opt_mask_regions.setToolTip(
+            "Wavelength intervals (rest frame, Å) masked in all spectra, e.g. emission lines\n"
+            "or sky residuals. Bad pixels are replaced by a linear interpolation of the good ones."
+        )
+        lay.addWidget(self.opt_mask_regions)
+
+        bpr_row = QWidget()
+        bpr_lay = QHBoxLayout(bpr_row)
+        bpr_lay.setContentsMargins(0, 0, 0, 0)
+        bpr_lay.setSpacing(8)
+        bpr_label = QLabel("Max. Bad Pixel Ratio")
+        bpr_label.setFixedWidth(160)
+        bpr_lay.addWidget(bpr_label)
+        self.spin_bpr_thres = QDoubleSpinBox()
+        self.spin_bpr_thres.setRange(0.0, 1.0)
+        self.spin_bpr_thres.setDecimals(2)
+        self.spin_bpr_thres.setSingleStep(0.05)
+        self.spin_bpr_thres.setValue(1.0)
+        self.spin_bpr_thres.setToolTip(
+            "Indices with a larger fraction of bad pixels within their bandpasses are not\n"
+            "measured (NaN). 1.0 keeps every index with at least one good pixel in its central band."
+        )
+        self.spin_bpr_thres.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        bpr_lay.addWidget(self.spin_bpr_thres, 1)
+        lay.addWidget(bpr_row)
+
+        other_label = QLabel("Other Options:")
+        other_label.setStyleSheet("font-weight: 500; margin-top: 6px;")
+        lay.addWidget(other_label)
 
         self.chk_neg_to_zero = QCheckBox("  Set negative EW to zero")
         lay.addWidget(self.chk_neg_to_zero)
@@ -828,12 +974,17 @@ class MainWindow(QMainWindow):
         ini = [r for r in ini_rows if r[1].is_enabled()]
         fin = [r for r in fin_rows if r[1].is_enabled()]
 
+        # In Table mode the initial resolution may come from the table itself
+        # (columns sigma, FWHM or R), which takes precedence over the form.
+        table_ini_cols = self._table_resolution_columns()
+
         # Resolution correction is enabled, so one "ini" and one "fin" value
         # must be provided — otherwise there is nothing to convolve.
-        if not ini:
+        if not ini and not table_ini_cols:
             return (
                 "Enable Resolution Correction is checked, but no initial resolution "
-                "was set: enable one of σ_ini, FWHM_ini or R_ini."
+                "was set: enable one of σ_ini, FWHM_ini or R_ini, or add a sigma, "
+                "FWHM or R column to the Spectrum List."
             )
         if not fin:
             return (
@@ -854,6 +1005,10 @@ class MainWindow(QMainWindow):
                     return f"{label} file not found: {path}"
             elif row.value() <= 0:
                 return f"{label} must be strictly positive (> 0)."
+
+        # Per-spectrum values from the table are checked by saira() for every spectrum.
+        if table_ini_cols or not ini:
+            return None
 
         (label_ini, row_ini, kind_ini), (label_fin, row_fin, kind_fin) = ini[0], fin[0]
         # Wavelength-dependent or per-spectrum values are checked by saira()
@@ -890,120 +1045,106 @@ class MainWindow(QMainWindow):
 
         return None
 
-    def _on_run(self):
-        if self.worker and self.worker.isRunning():
-            QMessageBox.warning(self, "Running", "SAIRA is already running.")
-            return
+    def _table_resolution_columns(self):
+        """Resolution columns (sigma, FWHM, R) present in the Spectrum List, in Table mode."""
+        if not self.radio_table_mode.isChecked():
+            return []
+        filename = self.pick_spectrum_list.text()
+        if not filename or not os.path.isfile(filename):
+            return []
+        from saira.saira_wapper import read_input_table
+        try:
+            columns = read_input_table(filename).columns
+        except Exception:
+            return []
+        return [c for c in ("sigma", "FWHM", "R") if c in columns]
 
+    def _validate_inputs(self, check_paths=True):
+        """
+        Check the GUI state before a run (or a script export). Returns a list of
+        (title, message) tuples; empty if everything is fine. With check_paths=False
+        (script export) the spectra directory does not need to exist on this machine.
+        """
         is_table_mode = self.radio_table_mode.isChecked()
         filename = self.pick_spectrum_list.text() if is_table_mode else None
-        file_ext = self.combo_extension.currentText().strip() if not is_table_mode else None
         path_to_files = self.pick_spectra_dir.text()
-        idx_idx = self.combo_idx_defs.currentIndex()
 
         errors = []
         if is_table_mode and not filename:
             errors.append("Spectrum list file is required in Table mode.")
         if not path_to_files:
             errors.append("Spectra directory is required.")
-        elif not os.path.isdir(path_to_files):
+        elif check_paths and not os.path.isdir(path_to_files):
             errors.append(f"Spectra directory not found: {path_to_files}")
-        if idx_idx < 0:
+        if self.combo_idx_defs.currentIndex() < 0:
             errors.append("Index definitions file is required.")
-
         if errors:
-            QMessageBox.warning(self, "Missing Input", "\n".join(errors))
-            return
+            return [("Missing Input", "\n".join(errors))]
 
-        # Validate the redshift file, if one was chosen
-        if self.chk_enable_redshift.isChecked() and self.opt_z.is_enabled() and self.opt_z.is_file():
-            z_path = self.opt_z.file_path()
-            if not z_path or not os.path.isfile(z_path):
-                QMessageBox.critical(self, "Invalid Redshift File",
-                                     f"Redshift is set to File mode, but the file was not found: {z_path or '(none)'}")
-                return
+        # Table mode: one z per spectrum from a CSV with file,redshift columns
+        if self.chk_enable_redshift.isChecked() and is_table_mode:
+            if check_paths or os.path.isfile(filename):
+                z_error = self._validate_redshift_table(filename)
+                if z_error:
+                    return [("Invalid Spectrum List for Redshift Correction", z_error)]
 
-        # Validate resolution parameters
         if self.chk_enable_resolution.isChecked():
             res_error = self._validate_resolution_settings()
             if res_error:
-                QMessageBox.critical(self, "Invalid Resolution Parameters", res_error)
-                return
+                return [("Invalid Resolution Parameters", res_error)]
 
-        index_defs = self.combo_idx_defs.currentData()
-        output_file = self.pick_output.text() or "measurements.csv"
-
-        # Resolve which indices to run: a manual "Select Indices…" choice takes
-        # precedence; otherwise auto-exclude indices whose Line Limits fall
-        # outside the batch's wavelength coverage, confirmed once for the run.
-        from saira.saira_wapper import read_idx_defs, list_spectrum_files, get_spectra_wavelength_range, filter_idx_by_range
-
-        if self.custom_idx_definitions is not None:
-            final_idx_definitions = self.custom_idx_definitions
-        else:
+        if self.opt_mask_regions.is_enabled():
             try:
-                base_idx_definitions = read_idx_defs(index_defs)
-                files = list_spectrum_files(filename, path_to_files, file_ext)
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Could not read index definitions or spectra: {e}")
-                return
+                parse_mask_regions(self.opt_mask_regions.text())
+            except ValueError as e:
+                return [("Invalid Mask Regions", str(e))]
+        return []
 
-            final_idx_definitions = base_idx_definitions
-            wave_min, wave_max = get_spectra_wavelength_range(path_to_files, files)
-            if wave_min is not None:
-                in_range = filter_idx_by_range(base_idx_definitions, wave_min, wave_max)
-                if not in_range.all():
-                    excluded_names = [str(n) for n in base_idx_definitions['name'][~in_range]]
-                    msg = (
-                        f"The spectra in this batch cover {wave_min:.1f} - {wave_max:.1f} Å.\n\n"
-                        f"{len(excluded_names)} of {len(base_idx_definitions)} indices have Line "
-                        f"Limits outside this range and will be EXCLUDED from this run:\n\n"
-                        + ", ".join(excluded_names) +
-                        "\n\nUse \"Select Indices…\" beforehand if you want to override this."
-                    )
-                    reply = QMessageBox.question(
-                        self, "Indices Out of Range", msg,
-                        QMessageBox.Ok | QMessageBox.Cancel, QMessageBox.Ok
-                    )
-                    if reply != QMessageBox.Ok:
-                        return
-                    final_idx_definitions = base_idx_definitions[in_range]
-
-        # Build kwargs for saira()
+    def _build_saira_kwargs(self):
+        """
+        Keyword arguments for saira() reproducing the current GUI state. IndexDefs
+        is the path of the index definitions file (a custom index selection is
+        applied by the caller).
+        """
+        is_table_mode = self.radio_table_mode.isChecked()
         kwargs = {
-            "filename": filename,
-            "path_to_files": path_to_files,
-            "file_extension": file_ext,
-            "IndexDefs": final_idx_definitions,
-            "output_file": output_file,
+            "filename": self.pick_spectrum_list.text() if is_table_mode else None,
+            "path_to_files": self.pick_spectra_dir.text(),
+            "file_extension": None if is_table_mode else self.combo_extension.currentText().strip(),
+            "IndexDefs": self.combo_idx_defs.currentData(),
+            "output_file": self.pick_output.text() or "measurements.csv",
             "do_resolution": self.chk_enable_resolution.isChecked(),
             "do_redshift": self.chk_enable_redshift.isChecked(),
         }
 
         # Resolution (only meaningful when "Enable Resolution Correction" is checked)
         if self.chk_enable_resolution.isChecked():
-            if self.opt_sigma_ini.is_enabled():
-                kwargs["sigma_ini"] = self.opt_sigma_ini.value()
-            if self.opt_sigma_fin.is_enabled():
-                kwargs["sigma_fin"] = self.opt_sigma_fin.value()
-            if self.opt_fwhm_ini.is_enabled():
-                kwargs["FWHM_ini"] = self.opt_fwhm_ini.value()
-            if self.opt_fwhm_fin.is_enabled():
-                kwargs["FWHM_fin"] = self.opt_fwhm_fin.value()
-            if self.opt_r_ini.is_enabled():
-                kwargs["R_ini"] = self.opt_r_ini.value()
-            if self.opt_r_fin.is_enabled():
-                kwargs["R_fin"] = self.opt_r_fin.value()
+            for key, row in (("sigma_ini", self.opt_sigma_ini), ("sigma_fin", self.opt_sigma_fin),
+                             ("FWHM_ini", self.opt_fwhm_ini), ("FWHM_fin", self.opt_fwhm_fin),
+                             ("R_ini", self.opt_r_ini), ("R_fin", self.opt_r_fin)):
+                if row.is_enabled():
+                    kwargs[key] = row.value()
 
-        # Options (redshift only meaningful when "Enable Redshift Correction" is checked)
-        if self.chk_enable_redshift.isChecked() and self.opt_z.is_enabled():
-            kwargs["z"] = self.opt_z.value()
+        # Redshift: in Table mode z comes from the 'redshift' column; auto-discover uses one z for all
+        if self.chk_enable_redshift.isChecked() and not is_table_mode:
+            kwargs["z"] = self.spin_z.value()
 
         # Error Estimation: mutually exclusive Monte Carlo / analytical / none
         if self.radio_err_montecarlo.isChecked():
             kwargs["simulate"] = self.spin_montecarlo_n.value()
         elif self.radio_err_analytical.isChecked():
             kwargs["error"] = True
+        elif self.radio_err_propagation.isChecked():
+            kwargs["error"] = True
+            kwargs["error_method"] = "propagation"
+
+        # Bad pixels (defaults omitted, so that exported scripts stay short)
+        if not self.chk_use_flags.isChecked():
+            kwargs["use_flags"] = False
+        if self.opt_mask_regions.is_enabled() and self.opt_mask_regions.text():
+            kwargs["mask_regions"] = parse_mask_regions(self.opt_mask_regions.text())
+        if self.spin_bpr_thres.value() < 1.0:
+            kwargs["bpr_thres"] = self.spin_bpr_thres.value()
 
         if self.chk_neg_to_zero.isChecked():
             kwargs["negative_Ew_to_zero"] = True
@@ -1024,6 +1165,60 @@ class MainWindow(QMainWindow):
             kwargs["allindices_plot_path"] = self.opt_all_plot_dir.text() or "./"
         if self.opt_log_file.is_enabled():
             kwargs["print_log"] = self.opt_log_file.text()
+        return kwargs
+
+    def _on_run(self):
+        if self.worker and self.worker.isRunning():
+            QMessageBox.warning(self, "Running", "SAIRA is already running.")
+            return
+
+        problems = self._validate_inputs()
+        if problems:
+            title, message = problems[0]
+            show = QMessageBox.warning if title == "Missing Input" else QMessageBox.critical
+            show(self, title, message)
+            return
+
+        kwargs = self._build_saira_kwargs()
+        index_defs = kwargs["IndexDefs"]
+
+        # Resolve which indices to run: a manual "Select Indices…" choice takes
+        # precedence; otherwise auto-exclude indices whose Line Limits fall
+        # outside the batch's wavelength coverage, confirmed once for the run.
+        from saira.saira_wapper import read_idx_defs, list_spectrum_files, get_spectra_wavelength_range, filter_idx_by_range
+
+        if self.custom_idx_definitions is not None:
+            final_idx_definitions = self.custom_idx_definitions
+        else:
+            try:
+                base_idx_definitions = read_idx_defs(index_defs)
+                files = list_spectrum_files(kwargs["filename"], kwargs["path_to_files"], kwargs["file_extension"])
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Could not read index definitions or spectra: {e}")
+                return
+
+            final_idx_definitions = base_idx_definitions
+            wave_min, wave_max = get_spectra_wavelength_range(kwargs["path_to_files"], files)
+            if wave_min is not None:
+                in_range = filter_idx_by_range(base_idx_definitions, wave_min, wave_max)
+                if not in_range.all():
+                    excluded_names = [str(n) for n in base_idx_definitions['name'][~in_range]]
+                    msg = (
+                        f"The spectra in this batch cover {wave_min:.1f} - {wave_max:.1f} Å.\n\n"
+                        f"{len(excluded_names)} of {len(base_idx_definitions)} indices have Line "
+                        f"Limits outside this range and will be EXCLUDED from this run:\n\n"
+                        + ", ".join(excluded_names) +
+                        "\n\nUse \"Select Indices…\" beforehand if you want to override this."
+                    )
+                    reply = QMessageBox.question(
+                        self, "Indices Out of Range", msg,
+                        QMessageBox.Ok | QMessageBox.Cancel, QMessageBox.Ok
+                    )
+                    if reply != QMessageBox.Ok:
+                        return
+                    final_idx_definitions = base_idx_definitions[in_range]
+
+        kwargs["IndexDefs"] = final_idx_definitions
 
         # Clear previous run
         self.log_console.clear_log()
@@ -1128,16 +1323,22 @@ class MainWindow(QMainWindow):
 
         # Options
         cfg["enable_redshift"] = self.chk_enable_redshift.isChecked()
-        cfg["z"] = {"enabled": self.opt_z.is_enabled(), "value": self.opt_z.spinbox.value(),
-                    "mode": self.opt_z.combo_mode.currentText(), "file": self.opt_z.file_path()}
+        cfg["z"] = {"value": self.spin_z.value()}
 
         if self.radio_err_montecarlo.isChecked():
             cfg["error_method"] = "montecarlo"
         elif self.radio_err_analytical.isChecked():
             cfg["error_method"] = "analytical"
+        elif self.radio_err_propagation.isChecked():
+            cfg["error_method"] = "propagation"
         else:
             cfg["error_method"] = "none"
         cfg["montecarlo_n"] = self.spin_montecarlo_n.value()
+
+        cfg["use_flags"] = self.chk_use_flags.isChecked()
+        cfg["mask_regions"] = {"enabled": self.opt_mask_regions.is_enabled(),
+                               "value": self.opt_mask_regions.line_edit.text()}
+        cfg["bpr_thres"] = self.spin_bpr_thres.value()
 
         cfg["neg_to_zero"] = self.chk_neg_to_zero.isChecked()
 
@@ -1189,7 +1390,8 @@ class MainWindow(QMainWindow):
         # Options
         self.chk_enable_redshift.setChecked(cfg.get("enable_redshift", False))
         d = cfg.get("z", {})
-        self.opt_z.set_state(d.get("enabled", False), d.get("value"), d.get("mode"), d.get("file"))
+        if d.get("value") is not None:
+            self.spin_z.setValue(d["value"])
 
         if "error_method" in cfg:
             method = cfg.get("error_method", "none")
@@ -1206,9 +1408,15 @@ class MainWindow(QMainWindow):
             montecarlo_n = old_simulate.get("value", 100)
         self.radio_err_montecarlo.setChecked(method == "montecarlo")
         self.radio_err_analytical.setChecked(method == "analytical")
+        self.radio_err_propagation.setChecked(method == "propagation")
         self.radio_err_none.setChecked(method == "none")
         self.spin_montecarlo_n.setValue(montecarlo_n)
         self.spin_montecarlo_n.setEnabled(method == "montecarlo")
+
+        self.chk_use_flags.setChecked(cfg.get("use_flags", True))
+        d = cfg.get("mask_regions", {})
+        self.opt_mask_regions.set_state(d.get("enabled", False), d.get("value"))
+        self.spin_bpr_thres.setValue(cfg.get("bpr_thres", 1.0))
 
         self.chk_neg_to_zero.setChecked(cfg.get("neg_to_zero", False))
 
@@ -1248,6 +1456,207 @@ class MainWindow(QMainWindow):
                 cfg = json.load(f)
             self._apply_config(cfg)
             self.statusBar().showMessage(f"Configuration loaded from {path}")
+
+    # -----------------------------------------------------------------
+    # Export / Load Script (.py)
+    # -----------------------------------------------------------------
+
+    def _on_export_script(self):
+        """
+        Write the current configuration as a standalone .py script that calls
+        saira() with the same arguments as "Run SAIRA" — meant to be run by hand
+        (e.g. on a cluster with no display) or loaded back with "Load Script".
+        """
+        # Local paths need not exist: the script may run on another machine.
+        problems = self._validate_inputs(check_paths=False)
+        if problems:
+            title, message = problems[0]
+            QMessageBox.warning(self, title, message)
+            return
+
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export SAIRA Script", "run_saira.py", "Python Files (*.py);;All Files (*)"
+        )
+        if not path:
+            return
+
+        kwargs = self._build_saira_kwargs()
+        selected = None
+        if self.custom_idx_definitions is not None:
+            selected = [str(n) for n in self.custom_idx_definitions["name"]]
+        try:
+            with open(path, "w") as f:
+                f.write(generate_script(kwargs, selected))
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Could not write script: {e}")
+            return
+
+        self.statusBar().showMessage(f"Script exported to {path}")
+        QMessageBox.information(
+            self, "Script Exported",
+            f"Saved to:\n{path}\n\nRun it with:\n    python {os.path.basename(path)}"
+        )
+
+    def _on_load_script(self):
+        """
+        Fill the GUI from a script that calls saira() (the inverse of "Export
+        Script"). The script is executed with a recording saira() that only
+        stores its arguments — same trust level as running the script yourself.
+        """
+        if self.worker and self.worker.isRunning():
+            QMessageBox.warning(self, "Running", "Wait for the current run to finish first.")
+            return
+
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Load SAIRA Script", "", "Python Files (*.py);;All Files (*)"
+        )
+        if not path:
+            return
+
+        reply = QMessageBox.question(
+            self, "Load Script",
+            "This runs the script's own code to read its configuration (saira() itself is "
+            "not executed) — the same as running it yourself. Only continue if you trust "
+            f"'{os.path.basename(path)}'.",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        try:
+            kwargs, index_defs_path, selected, warnings = import_script(path)
+        except ScriptImportError as e:
+            QMessageBox.critical(self, "Could Not Load Script", str(e))
+            return
+        except Exception as e:
+            QMessageBox.critical(self, "Could Not Load Script", f"Unexpected error: {e}")
+            return
+
+        cfg, map_warnings = self._kwargs_to_config(kwargs, index_defs_path)
+        self._apply_config(cfg)
+        warnings += map_warnings
+
+        self.custom_idx_definitions = None
+        self.lbl_idx_selection.setText("")
+        if selected is not None and index_defs_path:
+            from saira.saira_wapper import read_idx_defs
+            try:
+                all_defs = read_idx_defs(index_defs_path)
+                self.custom_idx_definitions = all_defs[np.isin(all_defs["name"], selected)]
+                self.lbl_idx_selection.setText(
+                    f"Custom selection: {len(self.custom_idx_definitions)}/{len(all_defs)} indices active"
+                )
+            except Exception as e:
+                warnings.append(f"Could not apply the index selection: {e}")
+
+        self.statusBar().showMessage(f"Configuration imported from {path}")
+        if warnings:
+            QMessageBox.warning(
+                self, "Imported With Warnings",
+                "The script's configuration was imported, but:\n\n" + "\n\n".join(f"• {w}" for w in warnings)
+            )
+        else:
+            QMessageBox.information(self, "Script Loaded", f"Configuration imported from:\n{path}")
+
+    def _kwargs_to_config(self, kwargs, index_defs_path):
+        """
+        Translate the arguments of a saira() call into the GUI configuration
+        dict used by _apply_config(). Returns (cfg, warnings).
+        """
+        warnings = []
+        cfg = self._gather_config()   # start from the current state for anything not given
+        known = set(_SCRIPT_ARGS)
+        unknown = sorted(set(kwargs) - known)
+        if unknown:
+            warnings.append("Arguments not supported by the GUI were ignored: " + ", ".join(unknown))
+
+        filename = kwargs.get("filename")
+        cfg["input_mode"] = "table" if filename else "extension"
+        cfg["spectrum_list"] = filename or ""
+        if not filename:
+            cfg["file_extension"] = kwargs.get("file_extension") or ".txt"
+        cfg["spectra_dir"] = kwargs.get("path_to_files", "./")
+        cfg["output_file"] = kwargs.get("output_file", "demo.txt")
+        if index_defs_path:
+            cfg["idx_defs_path"] = index_defs_path
+            cfg["idx_defs_text"] = os.path.basename(index_defs_path)
+
+        # Resolution
+        cfg["enable_resolution"] = bool(kwargs.get("do_resolution", False))
+        for key, name in (("sigma_ini", "sigma_ini"), ("sigma_fin", "sigma_fin"),
+                          ("FWHM_ini", "fwhm_ini"), ("FWHM_fin", "fwhm_fin"),
+                          ("R_ini", "r_ini"), ("R_fin", "r_fin")):
+            value = kwargs.get(key)
+            row = dict(cfg.get(name, {}), enabled=False)
+            if value is None:
+                pass
+            elif isinstance(value, str):
+                row.update(enabled=True, mode="File", file=value)
+            elif np.ndim(value) == 0:
+                row.update(enabled=True, mode="Value", value=float(value))
+            else:
+                warnings.append(f"{key} is given as an array in the script; save it to a "
+                                f"file (wavelength, value) to use it in the GUI.")
+            cfg[name] = row
+
+        # Redshift
+        cfg["enable_redshift"] = bool(kwargs.get("do_redshift", False))
+        z = kwargs.get("z")
+        if cfg["enable_redshift"]:
+            if filename:
+                if z is not None:
+                    warnings.append("In Table mode the redshift of each spectrum is read from the "
+                                    "'redshift' column of the Spectrum List; the z given in the script "
+                                    "was ignored.")
+            elif z is None or isinstance(z, str) or np.ndim(z) != 0:
+                warnings.append("In Auto-discover mode a single z is applied to all spectra; the z of "
+                                "the script is not a single number, so it was not imported.")
+            else:
+                cfg["z"] = {"value": float(z)}
+
+        # Errors and other options
+        if kwargs.get("simulate"):
+            cfg["error_method"] = "montecarlo"
+            cfg["montecarlo_n"] = int(kwargs["simulate"])
+        elif kwargs.get("error_method") == "propagation":
+            cfg["error_method"] = "propagation"
+        elif kwargs.get("error"):
+            cfg["error_method"] = "analytical"
+        else:
+            cfg["error_method"] = "none"
+        cfg["neg_to_zero"] = bool(kwargs.get("negative_Ew_to_zero", False))
+        cfg["use_flags"] = bool(kwargs.get("use_flags", True))
+        regions = kwargs.get("mask_regions")
+        try:
+            cfg["mask_regions"] = {"enabled": bool(regions),
+                                   "value": format_mask_regions(np.atleast_2d(regions)) if regions else ""}
+        except Exception:
+            cfg["mask_regions"] = {"enabled": False, "value": ""}
+            warnings.append("mask_regions of the script could not be read; set them by hand.")
+        cfg["bpr_thres"] = float(kwargs.get("bpr_thres", 1.0))
+        a_to_mag = kwargs.get("A_to_mag")
+        cfg["a_to_mag"] = {"enabled": bool(a_to_mag),
+                           "value": ", ".join(a_to_mag) if a_to_mag else ""}
+        compute_idx = kwargs.get("compute_idx")
+        cfg["compute_idx"] = {"enabled": bool(compute_idx), "value": compute_idx or ""}
+
+        # Plots and log
+        for key, name in (("path_singleind_plots", "single_plots"), ("AllIndicesPlot", "all_plot"),
+                          ("allindices_plot_path", "all_plot_dir"), ("print_log", "log_file")):
+            value = kwargs.get(key)
+            cfg[name] = {"enabled": value is not None, "value": value or ""}
+        return cfg, warnings
+
+
+# Arguments of saira() that the GUI can represent
+_SCRIPT_ARGS = (
+    "filename", "path_to_files", "file_extension", "IndexDefs", "output_file",
+    "do_redshift", "z", "do_resolution", "sigma_ini", "FWHM_ini", "R_ini",
+    "sigma_fin", "FWHM_fin", "R_fin", "simulate", "error", "negative_Ew_to_zero",
+    "A_to_mag", "compute_idx", "path_singleind_plots", "AllIndicesPlot",
+    "allindices_plot_path", "print_log", "use_flags", "mask_regions", "bpr_thres",
+    "error_method",
+)
 
 
 # ---------------------------------------------------------------------------

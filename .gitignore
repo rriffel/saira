@@ -16,3 +16,6 @@ build/
 # Logs and output
 *.log
 demo.txt
+
+# Comparisons with other codes (scripts, measurements and figures; kept locally)
+saira_comparisons/
