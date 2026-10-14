@@ -416,7 +416,7 @@ live in `saira/suport_files/` — `Riffel_2019_defs.ind` and `less_defs.ind`.
 
 If you're mixing indices from different spectral regions (optical + near-IR, say), some will
 inevitably fall outside what a given spectrum actually covers. Rather than let those quietly come back
-as `NaN`, SAIRA can catch it upfront — see [§Dropping indices that fall outside your spectra's range](#dropping-indices-that-fall-outside-your-spectras-range)
+as `NaN`, SAIRA can catch it upfront — see [Dropping indices that fall outside your spectra's range](#dropping-indices-that-fall-outside-your-spectras-range)
 for the scripted version, or the GUI's "Select Indices…" dialog for the point-and-click one.
 
 ---
