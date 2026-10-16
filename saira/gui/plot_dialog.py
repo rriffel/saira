@@ -39,7 +39,6 @@ class PlotDialog(QDialog):
         self.df2_label = None
         self._build_ui()
 
-    # -----------------------------------------------------------------
     def _build_ui(self):
         layout = QVBoxLayout(self)
 
@@ -58,8 +57,6 @@ class PlotDialog(QDialog):
         info.setStyleSheet("font-size: 12px;")
         layout.addWidget(info)
 
-        # Only plot-able index columns are offered — the e_<name> error
-        # columns are for error bars, not variables to plot on their own.
         cols = [c for c in self.df.columns if c.lower() != 'file' and not c.startswith('e_')]
 
         form = QHBoxLayout()
@@ -141,13 +138,11 @@ class PlotDialog(QDialog):
         btn_row.addWidget(btn_close)
         layout.addLayout(btn_row)
 
-        # Plot something on open, if there are at least two indices available.
         if len(cols) >= 2:
             self.combo_x.setCurrentText(cols[0])
             self.combo_y.setCurrentText(cols[1])
             self._on_plot()
 
-    # -----------------------------------------------------------------
     def _eval_expr(self, expr, df):
         expr = expr.strip()
         if not expr:
@@ -259,7 +254,6 @@ class PlotDialog(QDialog):
         self.df2_label = os.path.basename(path)
         self.btn_clear_overlay.setEnabled(True)
 
-        # Same-style column picker as the main file, restricted to this file's own columns.
         overlay_cols = [c for c in df2.columns if c.lower() != 'file' and not c.startswith('e_')]
         self.combo_x2.clear()
         self.combo_y2.clear()
@@ -268,7 +262,6 @@ class PlotDialog(QDialog):
         self.combo_x2.setEnabled(bool(overlay_cols))
         self.combo_y2.setEnabled(bool(overlay_cols))
 
-        # Default to the same columns as the main plot when the overlay has them too.
         x_default = self.combo_x.currentText()
         y_default = self.combo_y.currentText()
         if x_default not in overlay_cols and overlay_cols:
@@ -278,7 +271,6 @@ class PlotDialog(QDialog):
         self.combo_x2.setCurrentText(x_default)
         self.combo_y2.setCurrentText(y_default)
 
-        # Auto-detect whether this file has any e_<name> error columns at all.
         err_note = "error columns detected" if self._has_error_columns(df2) else "no error columns"
         self.lbl_overlay.setText(f"Overlaying: {self.df2_label} ({err_note})")
         self._on_plot()

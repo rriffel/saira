@@ -41,7 +41,6 @@ class IndexSelectionDialog(QDialog):
         self._build_ui()
         self._populate_table()
 
-    # -----------------------------------------------------------------
     def _build_ui(self):
         layout = QVBoxLayout(self)
 
@@ -125,7 +124,6 @@ class IndexSelectionDialog(QDialog):
         self.table.resizeColumnsToContents()
         self._update_summary()
 
-    # -----------------------------------------------------------------
     def _on_item_changed(self, item):
         if item.column() != 0:
             return
@@ -170,7 +168,6 @@ class IndexSelectionDialog(QDialog):
             f"{n_sel} of {n_total} indices selected ({n_excluded_range} out of spectra range)"
         )
 
-    # -----------------------------------------------------------------
     def get_selected_mask(self):
         mask = np.zeros(self.table.rowCount(), dtype=bool)
         for row in range(self.table.rowCount()):

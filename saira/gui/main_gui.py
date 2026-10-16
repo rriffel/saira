@@ -34,7 +34,6 @@ from .plot_dialog import PlotDialog
 from .script_io import generate_script, import_script, ScriptImportError
 
 
-# Tooltips describing the files accepted by the Value/File rows
 RES_INI_FILE_TOOLTIP = (
     "File mode accepts either:\n"
     "  • a wavelength-dependent curve: two columns, wavelength (Å) and value,\n"
@@ -49,10 +48,6 @@ RES_FIN_FILE_TOOLTIP = (
     "(e.g. suport_files/e-miles_spectral_resolution_fwhm.dat or _sigma.dat)."
 )
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def parse_mask_regions(text):
     """
@@ -87,15 +82,11 @@ def get_support_dir():
     return os.path.join(pkg_dir, "suport_files")
 
 
-# ---------------------------------------------------------------------------
-# Worker Thread — runs saira() in the background
-# ---------------------------------------------------------------------------
-
 class SairaWorker(QThread):
     """Run the SAIRA wrapper in a background thread."""
 
     log_signal = pyqtSignal(str)
-    finished_signal = pyqtSignal(object)   # pandas DataFrame or None
+    finished_signal = pyqtSignal(object)
     error_signal = pyqtSignal(str)
 
     def __init__(self, kwargs):
@@ -103,7 +94,6 @@ class SairaWorker(QThread):
         self.kwargs = kwargs
 
     def run(self):
-        # Redirect stdout so print() calls from saira are captured
         old_stdout = sys.stdout
         sys.stdout = _StreamRedirector(self.log_signal)
         try:
@@ -134,10 +124,6 @@ class _StreamRedirector(io.TextIOBase):
         pass
 
 
-# ---------------------------------------------------------------------------
-# Main Window
-# ---------------------------------------------------------------------------
-
 class MainWindow(QMainWindow):
     """SAIRA — Main application window."""
 
@@ -149,13 +135,10 @@ class MainWindow(QMainWindow):
 
         self.worker = None
         self.result_df = None
-        self.custom_idx_definitions = None  # set when the user customizes via "Select Indices…"
+        self.custom_idx_definitions = None
 
         self._init_ui()
 
-    # -----------------------------------------------------------------
-    # UI Construction
-    # -----------------------------------------------------------------
 
     def _init_ui(self):
         central = QWidget(self)
@@ -164,11 +147,9 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # Sidebar
         sidebar = self._create_sidebar()
         main_layout.addWidget(sidebar)
 
-        # Content: top panels + bottom log/results
         right_side = QWidget()
         right_layout = QVBoxLayout(right_side)
         right_layout.setContentsMargins(0, 0, 0, 0)
@@ -176,7 +157,6 @@ class MainWindow(QMainWindow):
 
         splitter = QSplitter(Qt.Vertical)
 
-        # Top: scrollable config panels
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll_content = QWidget()
@@ -193,7 +173,6 @@ class MainWindow(QMainWindow):
         scroll.setWidget(scroll_content)
         splitter.addWidget(scroll)
 
-        # Bottom: log + results
         bottom = self._create_bottom_panel()
         splitter.addWidget(bottom)
         splitter.setStretchFactor(0, 3)
@@ -202,10 +181,8 @@ class MainWindow(QMainWindow):
         right_layout.addWidget(splitter)
         main_layout.addWidget(right_side, 1)
 
-        # Status bar
         self.statusBar().showMessage("Ready — Configure parameters and click Run SAIRA.")
 
-    # ----- Sidebar -----
 
     def _create_sidebar(self):
         sidebar = QWidget()
@@ -215,7 +192,6 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(12, 20, 12, 20)
         layout.setSpacing(8)
 
-        # Title
         title = QLabel("SAIRA")
         title.setProperty("role", "appTitle")
         title.setStyleSheet("font-size: 20px; font-weight: 800; margin-bottom: 2px;")
@@ -226,7 +202,6 @@ class MainWindow(QMainWindow):
         layout.addWidget(title)
         layout.addWidget(sub)
 
-        # Logo
         logo_path = get_logo_path()
         if logo_path:
             pix = QPixmap(logo_path)
@@ -239,7 +214,6 @@ class MainWindow(QMainWindow):
                 )
                 layout.addWidget(lbl)
 
-        # Section navigation buttons
         self.nav_buttons = []
         sections = [
             ("1. Input Files", 0),
@@ -248,7 +222,7 @@ class MainWindow(QMainWindow):
             ("4. Plots & Output", 3),
         ]
         for text, idx in sections:
-            btn = QPushButton(text.replace("&", "&&"))  # a single & would become a keyboard mnemonic
+            btn = QPushButton(text.replace("&", "&&"))
             btn.setObjectName("navBtn")
             btn.setCursor(Qt.PointingHandCursor)
             btn.clicked.connect(lambda _, i=idx: self._scroll_to_section(i))
@@ -257,7 +231,6 @@ class MainWindow(QMainWindow):
 
         layout.addSpacing(16)
 
-        # Run button
         self.btn_run = QPushButton("▶  Run SAIRA")
         self.btn_run.setProperty("role", "runBtn")
         self.btn_run.setCursor(Qt.PointingHandCursor)
@@ -266,7 +239,6 @@ class MainWindow(QMainWindow):
 
         layout.addSpacing(12)
 
-        # Config state
         lbl_cfg = QLabel("Configuration")
         lbl_cfg.setProperty("role", "accentLabel")
         lbl_cfg.setStyleSheet("font-size: 11px; font-weight: bold; margin-bottom: 2px;")
@@ -300,7 +272,6 @@ class MainWindow(QMainWindow):
 
         layout.addSpacing(12)
 
-        # Appearance
         lbl_appearance = QLabel("Appearance")
         lbl_appearance.setProperty("role", "accentLabel")
         lbl_appearance.setStyleSheet("font-size: 11px; font-weight: bold; margin-bottom: 2px;")
@@ -313,7 +284,6 @@ class MainWindow(QMainWindow):
 
         layout.addStretch()
 
-        # Footer
         footer = QLabel("Rogério Riffel\nJoão P. V. Benedetti\nUFRGS / Depto Astronomia")
         footer.setProperty("role", "mutedLabel")
         footer.setStyleSheet("font-size: 11px; line-height: 1.4;")
@@ -326,35 +296,27 @@ class MainWindow(QMainWindow):
         constants.set_theme(checked)
         self.setStyleSheet(constants.STYLESHEET)
 
-    # ----- Section Scroll -----
 
     def _scroll_to_section(self, idx):
         """Scroll the main area to the requested GroupBox."""
         targets = [self.grp_input, self.grp_resolution, self.grp_options, self.grp_plots]
         if 0 <= idx < len(targets):
             targets[idx].ensurePolished()
-            # Find the scroll area
             scroll = self.centralWidget().findChild(QScrollArea)
             if scroll:
                 scroll.ensureWidgetVisible(targets[idx], 0, 20)
 
-        # Highlight active nav button
         for i, btn in enumerate(self.nav_buttons):
             btn.setProperty("active", "true" if i == idx else "false")
             btn.style().unpolish(btn)
             btn.style().polish(btn)
 
-    # -----------------------------------------------------------------
-    # Panel 1: Input Files
-    # -----------------------------------------------------------------
 
     def _create_panel_input_files(self):
         self.grp_input = QGroupBox("Input Files")
         lay = QVBoxLayout(self.grp_input)
         lay.setSpacing(10)
 
-        # Redshift correction comes first: how z is given depends on the input mode
-        # (one z per spectrum from the table, or a single z for a whole directory).
         self.chk_enable_redshift = QCheckBox("  Enable Redshift Correction")
         self.chk_enable_redshift.setProperty("role", "masterToggle")
         self.chk_enable_redshift.setChecked(False)
@@ -395,7 +357,6 @@ class MainWindow(QMainWindow):
         self.lbl_z_warning.setWordWrap(True)
         lay.addWidget(self.lbl_z_warning)
 
-        # Mode Selection
         mode_row = QWidget()
         mode_lay = QHBoxLayout(mode_row)
         mode_lay.setContentsMargins(0, 0, 0, 0)
@@ -429,7 +390,6 @@ class MainWindow(QMainWindow):
         self.pick_spectra_dir.line_edit.textChanged.connect(self._update_discovered_count)
         lay.addWidget(self.pick_spectra_dir)
 
-        # Extension row (visible in auto-discover mode)
         self.ext_row = QWidget()
         ext_lay = QHBoxLayout(self.ext_row)
         ext_lay.setContentsMargins(0, 0, 0, 0)
@@ -455,7 +415,6 @@ class MainWindow(QMainWindow):
         lay.addWidget(self.ext_row)
         self.ext_row.setVisible(False)
 
-        # Index Definitions with combo for bundled files
         idx_row = QWidget()
         idx_layout = QHBoxLayout(idx_row)
         idx_layout.setContentsMargins(0, 0, 0, 0)
@@ -588,7 +547,6 @@ class MainWindow(QMainWindow):
         )
         if path:
             name = os.path.basename(path)
-            # Avoid duplicates
             idx = self.combo_idx_defs.findText(name)
             if idx >= 0:
                 self.combo_idx_defs.setCurrentIndex(idx)
@@ -597,7 +555,6 @@ class MainWindow(QMainWindow):
                 self.combo_idx_defs.setCurrentIndex(self.combo_idx_defs.count() - 1)
 
     def _on_idx_defs_changed(self):
-        # A previously customized selection belonged to a different .ind file.
         self.custom_idx_definitions = None
         self.lbl_idx_selection.setText("")
 
@@ -656,9 +613,6 @@ class MainWindow(QMainWindow):
             n_total = len(idx_definitions)
             self.lbl_idx_selection.setText(f"Custom selection: {n_sel}/{n_total} indices active")
 
-    # -----------------------------------------------------------------
-    # Panel 2: Redshift & Resolution
-    # -----------------------------------------------------------------
 
     def _create_panel_resolution(self):
         self.grp_resolution = QGroupBox("Resolution")
@@ -734,9 +688,6 @@ class MainWindow(QMainWindow):
         for row in self._resolution_rows:
             row.setEnabled(checked)
 
-    # -----------------------------------------------------------------
-    # Panel 3: Other Settings
-    # -----------------------------------------------------------------
 
     def _create_panel_options(self):
         self.grp_options = QGroupBox("Other Settings")
@@ -841,9 +792,6 @@ class MainWindow(QMainWindow):
 
         self.panels_layout.addWidget(self.grp_options)
 
-    # -----------------------------------------------------------------
-    # Panel 4: Plots & Output
-    # -----------------------------------------------------------------
 
     def _create_panel_plots(self):
         self.grp_plots = QGroupBox("Plots && Output")
@@ -874,9 +822,6 @@ class MainWindow(QMainWindow):
 
         self.panels_layout.addWidget(self.grp_plots)
 
-    # -----------------------------------------------------------------
-    # Bottom Panel: Progress + Log + Results Table
-    # -----------------------------------------------------------------
 
     def _create_bottom_panel(self):
         bottom = QWidget()
@@ -884,16 +829,13 @@ class MainWindow(QMainWindow):
         lay.setContentsMargins(20, 8, 20, 12)
         lay.setSpacing(8)
 
-        # Progress bar
         self.progress = QProgressBar()
-        self.progress.setRange(0, 0)  # indeterminate
+        self.progress.setRange(0, 0)
         self.progress.setVisible(False)
         lay.addWidget(self.progress)
 
-        # Horizontal split: log + table
         h_split = QSplitter(Qt.Horizontal)
 
-        # Log console
         log_group = QWidget()
         log_lay = QVBoxLayout(log_group)
         log_lay.setContentsMargins(0, 0, 0, 0)
@@ -906,7 +848,6 @@ class MainWindow(QMainWindow):
         log_lay.addWidget(self.log_console)
         h_split.addWidget(log_group)
 
-        # Results table
         table_group = QWidget()
         table_lay = QVBoxLayout(table_group)
         table_lay.setContentsMargins(0, 0, 0, 0)
@@ -952,9 +893,6 @@ class MainWindow(QMainWindow):
 
         return bottom
 
-    # -----------------------------------------------------------------
-    # Resolution Validation & Run SAIRA
-    # -----------------------------------------------------------------
 
     def _validate_resolution_settings(self):
         """
@@ -963,7 +901,7 @@ class MainWindow(QMainWindow):
         Returns None if valid, or an error description string if invalid.
         """
         c_kms = 299792.458
-        ref_wave = 5000.0  # reference wavelength in Angstroms for equivalence comparison
+        ref_wave = 5000.0
 
         ini_rows = [("σ_ini", self.opt_sigma_ini, "sigma"),
                     ("FWHM_ini", self.opt_fwhm_ini, "fwhm"),
@@ -974,12 +912,8 @@ class MainWindow(QMainWindow):
         ini = [r for r in ini_rows if r[1].is_enabled()]
         fin = [r for r in fin_rows if r[1].is_enabled()]
 
-        # In Table mode the initial resolution may come from the table itself
-        # (columns sigma, FWHM or R), which takes precedence over the form.
         table_ini_cols = self._table_resolution_columns()
 
-        # Resolution correction is enabled, so one "ini" and one "fin" value
-        # must be provided — otherwise there is nothing to convolve.
         if not ini and not table_ini_cols:
             return (
                 "Enable Resolution Correction is checked, but no initial resolution "
@@ -1006,13 +940,10 @@ class MainWindow(QMainWindow):
             elif row.value() <= 0:
                 return f"{label} must be strictly positive (> 0)."
 
-        # Per-spectrum values from the table are checked by saira() for every spectrum.
         if table_ini_cols or not ini:
             return None
 
         (label_ini, row_ini, kind_ini), (label_fin, row_fin, kind_fin) = ini[0], fin[0]
-        # Wavelength-dependent or per-spectrum values are checked by saira()
-        # for every spectrum, at every wavelength.
         if row_ini.is_file() or row_fin.is_file():
             return None
 
@@ -1081,7 +1012,6 @@ class MainWindow(QMainWindow):
         if errors:
             return [("Missing Input", "\n".join(errors))]
 
-        # Table mode: one z per spectrum from a CSV with file,redshift columns
         if self.chk_enable_redshift.isChecked() and is_table_mode:
             if check_paths or os.path.isfile(filename):
                 z_error = self._validate_redshift_table(filename)
@@ -1117,7 +1047,6 @@ class MainWindow(QMainWindow):
             "do_redshift": self.chk_enable_redshift.isChecked(),
         }
 
-        # Resolution (only meaningful when "Enable Resolution Correction" is checked)
         if self.chk_enable_resolution.isChecked():
             for key, row in (("sigma_ini", self.opt_sigma_ini), ("sigma_fin", self.opt_sigma_fin),
                              ("FWHM_ini", self.opt_fwhm_ini), ("FWHM_fin", self.opt_fwhm_fin),
@@ -1125,11 +1054,9 @@ class MainWindow(QMainWindow):
                 if row.is_enabled():
                     kwargs[key] = row.value()
 
-        # Redshift: in Table mode z comes from the 'redshift' column; auto-discover uses one z for all
         if self.chk_enable_redshift.isChecked() and not is_table_mode:
             kwargs["z"] = self.spin_z.value()
 
-        # Error Estimation: mutually exclusive Monte Carlo / analytical / none
         if self.radio_err_montecarlo.isChecked():
             kwargs["simulate"] = self.spin_montecarlo_n.value()
         elif self.radio_err_analytical.isChecked():
@@ -1138,7 +1065,6 @@ class MainWindow(QMainWindow):
             kwargs["error"] = True
             kwargs["error_method"] = "propagation"
 
-        # Bad pixels (defaults omitted, so that exported scripts stay short)
         if not self.chk_use_flags.isChecked():
             kwargs["use_flags"] = False
         if self.opt_mask_regions.is_enabled() and self.opt_mask_regions.text():
@@ -1156,7 +1082,6 @@ class MainWindow(QMainWindow):
         if self.opt_compute_idx.is_enabled():
             kwargs["compute_idx"] = self.opt_compute_idx.text()
 
-        # Plots
         if self.opt_single_plots.is_enabled():
             kwargs["path_singleind_plots"] = self.opt_single_plots.text()
         if self.opt_all_plot.is_enabled():
@@ -1182,9 +1107,6 @@ class MainWindow(QMainWindow):
         kwargs = self._build_saira_kwargs()
         index_defs = kwargs["IndexDefs"]
 
-        # Resolve which indices to run: a manual "Select Indices…" choice takes
-        # precedence; otherwise auto-exclude indices whose Line Limits fall
-        # outside the batch's wavelength coverage, confirmed once for the run.
         from saira.saira_wapper import read_idx_defs, list_spectrum_files, get_spectra_wavelength_range, filter_idx_by_range
 
         if self.custom_idx_definitions is not None:
@@ -1220,7 +1142,6 @@ class MainWindow(QMainWindow):
 
         kwargs["IndexDefs"] = final_idx_definitions
 
-        # Clear previous run
         self.log_console.clear_log()
         self.results_table.clear()
         self.results_table.setRowCount(0)
@@ -1229,7 +1150,6 @@ class MainWindow(QMainWindow):
         self.btn_plot.setEnabled(False)
         self.result_df = None
 
-        # Start worker
         self.progress.setVisible(True)
         self.btn_run.setEnabled(False)
         self.btn_run.setText("⏳  Running…")
@@ -1298,9 +1218,6 @@ class MainWindow(QMainWindow):
         dlg = PlotDialog(self.result_df, parent=self, label=label)
         dlg.exec_()
 
-    # -----------------------------------------------------------------
-    # Save / Load Config
-    # -----------------------------------------------------------------
 
     def _gather_config(self):
         """Collect all GUI settings into a dict."""
@@ -1314,14 +1231,12 @@ class MainWindow(QMainWindow):
         cfg["idx_defs_path"] = self.combo_idx_defs.currentData()
         cfg["output_file"] = self.pick_output.text()
 
-        # Resolution toggles
         cfg["enable_resolution"] = self.chk_enable_resolution.isChecked()
         for name in ("sigma_ini", "sigma_fin", "fwhm_ini", "fwhm_fin", "r_ini", "r_fin"):
             w = getattr(self, f"opt_{name}")
             cfg[name] = {"enabled": w.is_enabled(), "value": w.spinbox.value(),
                          "mode": w.combo_mode.currentText(), "file": w.file_path()}
 
-        # Options
         cfg["enable_redshift"] = self.chk_enable_redshift.isChecked()
         cfg["z"] = {"value": self.spin_z.value()}
 
@@ -1345,7 +1260,6 @@ class MainWindow(QMainWindow):
         cfg["a_to_mag"] = {"enabled": self.opt_a_to_mag.is_enabled(), "value": self.opt_a_to_mag.line_edit.text()}
         cfg["compute_idx"] = {"enabled": self.opt_compute_idx.is_enabled(), "value": self.opt_compute_idx.line_edit.text()}
 
-        # Plots
         cfg["single_plots"] = {"enabled": self.opt_single_plots.is_enabled(), "value": self.opt_single_plots.line_edit.text()}
         cfg["all_plot"] = {"enabled": self.opt_all_plot.is_enabled(), "value": self.opt_all_plot.line_edit.text()}
         cfg["all_plot_dir"] = {"enabled": self.opt_all_plot_dir.is_enabled(), "value": self.opt_all_plot_dir.line_edit.text()}
@@ -1366,7 +1280,6 @@ class MainWindow(QMainWindow):
         self.pick_spectra_dir.set_text(cfg.get("spectra_dir", ""))
         self.pick_output.set_text(cfg.get("output_file", "measurements.csv"))
 
-        # Restore idx defs combo
         idx_path = cfg.get("idx_defs_path")
         if idx_path:
             found = False
@@ -1380,14 +1293,12 @@ class MainWindow(QMainWindow):
                 self.combo_idx_defs.addItem(name, idx_path)
                 self.combo_idx_defs.setCurrentIndex(self.combo_idx_defs.count() - 1)
 
-        # Resolution
         self.chk_enable_resolution.setChecked(cfg.get("enable_resolution", False))
         for name in ("sigma_ini", "sigma_fin", "fwhm_ini", "fwhm_fin", "r_ini", "r_fin"):
             w = getattr(self, f"opt_{name}")
             d = cfg.get(name, {})
             w.set_state(d.get("enabled", False), d.get("value"), d.get("mode"), d.get("file"))
 
-        # Options
         self.chk_enable_redshift.setChecked(cfg.get("enable_redshift", False))
         d = cfg.get("z", {})
         if d.get("value") is not None:
@@ -1397,7 +1308,6 @@ class MainWindow(QMainWindow):
             method = cfg.get("error_method", "none")
             montecarlo_n = cfg.get("montecarlo_n", 100)
         else:
-            # Backward-compat with configs saved before the error-method radio buttons.
             old_simulate = cfg.get("simulate", {})
             if old_simulate.get("enabled"):
                 method = "montecarlo"
@@ -1425,7 +1335,6 @@ class MainWindow(QMainWindow):
         d = cfg.get("compute_idx", {})
         self.opt_compute_idx.set_state(d.get("enabled", False), d.get("value"))
 
-        # Plots
         d = cfg.get("single_plots", {})
         self.opt_single_plots.set_state(d.get("enabled", False), d.get("value"))
         d = cfg.get("all_plot", {})
@@ -1457,9 +1366,6 @@ class MainWindow(QMainWindow):
             self._apply_config(cfg)
             self.statusBar().showMessage(f"Configuration loaded from {path}")
 
-    # -----------------------------------------------------------------
-    # Export / Load Script (.py)
-    # -----------------------------------------------------------------
 
     def _on_export_script(self):
         """
@@ -1467,7 +1373,6 @@ class MainWindow(QMainWindow):
         saira() with the same arguments as "Run SAIRA" — meant to be run by hand
         (e.g. on a cluster with no display) or loaded back with "Load Script".
         """
-        # Local paths need not exist: the script may run on another machine.
         problems = self._validate_inputs(check_paths=False)
         if problems:
             title, message = problems[0]
@@ -1564,7 +1469,7 @@ class MainWindow(QMainWindow):
         dict used by _apply_config(). Returns (cfg, warnings).
         """
         warnings = []
-        cfg = self._gather_config()   # start from the current state for anything not given
+        cfg = self._gather_config()
         known = set(_SCRIPT_ARGS)
         unknown = sorted(set(kwargs) - known)
         if unknown:
@@ -1581,7 +1486,6 @@ class MainWindow(QMainWindow):
             cfg["idx_defs_path"] = index_defs_path
             cfg["idx_defs_text"] = os.path.basename(index_defs_path)
 
-        # Resolution
         cfg["enable_resolution"] = bool(kwargs.get("do_resolution", False))
         for key, name in (("sigma_ini", "sigma_ini"), ("sigma_fin", "sigma_fin"),
                           ("FWHM_ini", "fwhm_ini"), ("FWHM_fin", "fwhm_fin"),
@@ -1599,7 +1503,6 @@ class MainWindow(QMainWindow):
                                 f"file (wavelength, value) to use it in the GUI.")
             cfg[name] = row
 
-        # Redshift
         cfg["enable_redshift"] = bool(kwargs.get("do_redshift", False))
         z = kwargs.get("z")
         if cfg["enable_redshift"]:
@@ -1614,7 +1517,6 @@ class MainWindow(QMainWindow):
             else:
                 cfg["z"] = {"value": float(z)}
 
-        # Errors and other options
         if kwargs.get("simulate"):
             cfg["error_method"] = "montecarlo"
             cfg["montecarlo_n"] = int(kwargs["simulate"])
@@ -1640,7 +1542,6 @@ class MainWindow(QMainWindow):
         compute_idx = kwargs.get("compute_idx")
         cfg["compute_idx"] = {"enabled": bool(compute_idx), "value": compute_idx or ""}
 
-        # Plots and log
         for key, name in (("path_singleind_plots", "single_plots"), ("AllIndicesPlot", "all_plot"),
                           ("allindices_plot_path", "all_plot_dir"), ("print_log", "log_file")):
             value = kwargs.get(key)
@@ -1648,7 +1549,6 @@ class MainWindow(QMainWindow):
         return cfg, warnings
 
 
-# Arguments of saira() that the GUI can represent
 _SCRIPT_ARGS = (
     "filename", "path_to_files", "file_extension", "IndexDefs", "output_file",
     "do_redshift", "z", "do_resolution", "sigma_ini", "FWHM_ini", "R_ini",
@@ -1659,25 +1559,18 @@ _SCRIPT_ARGS = (
 )
 
 
-# ---------------------------------------------------------------------------
-# Entry Point
-# ---------------------------------------------------------------------------
-
 def main():
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     app.setApplicationName("SAIRA")
 
-    # Configure global font
     font = QFont("Inter", 10)
     app.setFont(font)
 
-    # Set application icon
     logo_path = get_logo_path()
     if logo_path:
         app.setWindowIcon(QIcon(logo_path))
 
-    # Splash screen
     splash = None
     if logo_path:
         pix = QPixmap(logo_path)

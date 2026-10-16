@@ -64,8 +64,6 @@ _DARK = dict(
     PROGRESS_BG="#334155",
 )
 
-# Fixed colors for matplotlib figures (plot_dialog.py). Figures always render
-# on a white canvas regardless of the app theme, so their palette stays put.
 PLOT_ACCENT = "#0D9488"
 PLOT_DANGER = "#EF4444"
 

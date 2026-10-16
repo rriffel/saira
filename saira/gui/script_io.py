@@ -20,7 +20,6 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 
-# Order in which the saira() arguments are written in exported scripts
 _ARG_ORDER = (
     "filename", "path_to_files", "file_extension", "IndexDefs", "output_file",
     "do_redshift", "z",
@@ -126,7 +125,7 @@ def import_script(path: str) -> tuple:
             source = f.read()
         namespace = {"__name__": "__main__", "__file__": path}
         try:
-            with contextlib.redirect_stdout(io.StringIO()):   # the script's own prints
+            with contextlib.redirect_stdout(io.StringIO()):
                 exec(compile(source, path, "exec"), namespace)
         except Exception as e:
             raise ScriptImportError(f"Error while running '{os.path.basename(path)}': {e}") from e

@@ -122,7 +122,6 @@ def read_input_table(filename):
     a header containing at least a 'file' column. A 'redshift' column is accepted
     as an alias of 'z'.
     """
-    # The separator is taken from the header line: comma, tab or blanks
     with open(filename) as f:
         header = next((line for line in f if line.strip()), '')
     if ',' in header:
@@ -265,13 +264,12 @@ def saira(filename = None,
     '''
     if error_method not in ('vollmann', 'propagation'):
         raise ValueError(f"error_method must be 'vollmann' or 'propagation' (got '{error_method}').")
-    error_option = error         # 'error' parameter (analytic errors without an error spectrum)
+    error_option = error
     if not do_resolution:
         sigma_ini = sigma_fin = FWHM_ini = FWHM_fin = R_ini = R_fin = None
     if not do_redshift:
         z = None
 
-    #changing where you print the info.
     term = sys.stdout
     if print_log is not None:
         log_dir = os.path.dirname(print_log)
@@ -279,9 +277,8 @@ def saira(filename = None,
             os.makedirs(log_dir)
         sys.stdout = open(print_log, 'w')
 
-    idx_definitions = _load_idx_definitions(IndexDefs) # loading idx definitions
+    idx_definitions = _load_idx_definitions(IndexDefs)
 
-    # Determine input spectrum files: from table or directory discovery
     if filename is not None and os.path.isfile(filename):
         original_input = read_input_table(filename)
     else:
@@ -299,10 +296,6 @@ def saira(filename = None,
     file_table =  original_input.copy()
     if 'redshift' in file_table.columns and 'z' not in file_table.columns:
         file_table = file_table.rename(columns={'redshift': 'z'})
-    # check if in the table there is either FWHM (A), sigma (km/s) and R (lambda/d_lambda).
-    # Otherwise, the initial resolution and the redshift can be given as a single value,
-    # one value per spectrum (list or file with file/value columns) or, for the
-    # resolution, a wavelength-dependent curve (file or array with wavelength/value).
     if do_resolution:
         _fill_per_spectrum_column(file_table, 'FWHM', FWHM_ini)
         _fill_per_spectrum_column(file_table, 'sigma', sigma_ini)
@@ -317,10 +310,6 @@ def saira(filename = None,
     else:
         file_table['z'] = None
 
-    # ------------------------------------------------------------------
-    # Run configuration summary: printed first so it's the first thing
-    # visible in the log, whether it goes to a file or to the GUI console.
-    # ------------------------------------------------------------------
     print('=' * 60)
     print('SAIRA run configuration')
     print('=' * 60)
@@ -363,7 +352,6 @@ def saira(filename = None,
         print(f'All-indices plot directory: {allindices_plot_path}  (filename: {AllIndicesPlot})')
     print('=' * 60)
 
-    # create empty array to add the info from the eqw function
     error_names = np.array(['e_'+name for name in idx_definitions['name']])
     header = np.dstack((idx_definitions['name'], error_names)).flatten()
     header = np.insert(header, 0, 'file')
@@ -373,17 +361,14 @@ def saira(filename = None,
     data_table.set_index('file', inplace=True)
     file_table.set_index('file', inplace=True)
 
-    #create folde to add the figures
     if path_singleind_plots is not None:
         if not os.path.exists(path_singleind_plots): os.mkdir(path_singleind_plots)
 
-    #here the code starts to go throu every file, openning them and measuring the indices
     for file in file_table.index:
         print('----------------------------')
         
-        #open the files either if they have an error spectrum (and pixel flags) or not
         flags = None
-        error = error_option     # the error spectrum of the previous file must not be reused
+        error = error_option
         try:
             if not use_flags:
                 raise ValueError
@@ -397,7 +382,7 @@ def saira(filename = None,
                 wave, flux = np.genfromtxt(os.path.join(path_to_files,file), usecols=(0,1), unpack=True)
                 print('Doing file '+file)
         
-        path=None #path that lead to the folder for the figures
+        path=None
         if path_singleind_plots is not None:
             path = os.path.join(path_singleind_plots,file)
             print('Individual indices plots saved in '+path)
@@ -414,7 +399,6 @@ def saira(filename = None,
             print('All indices plots saved in  '+pltallindices)
 
         
-        #actual code runs
         head_measurements, measurements = eqw(wave=wave, flux=flux, idx_definitions=idx_definitions,
                                             error=error, simulate=simulate, sigma_fin=sigma_fin,
                                             sigma_ini = file_table.loc[file, 'sigma'],
@@ -432,14 +416,12 @@ def saira(filename = None,
        
         data_table.loc[file] = pd.Series(measurements, index=head_measurements)
     
-    # cleaning table from columns that are all np.nan
     print('----------------------------')
     data_table = data_table.convert_dtypes()
     float64_cols = list(data_table.select_dtypes(include='Float64'))
     data_table[float64_cols] = data_table[float64_cols].astype(np.float64).values.tolist()
     data_table.dropna(axis=1, how='all', inplace=True)
 
-    #converting given indices to mag
     try:
         for idx in A_to_mag:
             i = np.where(idx_definitions['name'] == idx)[0][0]
@@ -451,7 +433,6 @@ def saira(filename = None,
     except TypeError:
         print('No indices converted to mag')
     
-    #computing additional indices
     try:
         with open(compute_idx) as f:
             for line in f:
